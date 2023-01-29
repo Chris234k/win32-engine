@@ -6,6 +6,11 @@
 #include <wingdi.h>
 #include "cstdint"   // uint32_t
 
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+
 // types
 struct GraphicsBuffer {
     int width, height;
@@ -30,8 +35,9 @@ int BUFFER_HEIGHT = 16;
 GraphicsBuffer graphicsBuffer;
 
 
-int main() {
-    const wchar_t CLASS_NAME[] = L"Sample Window Class";    
+int
+main() {
+    const wchar_t CLASS_NAME[] = L"Sample Window Class";
     
     HINSTANCE hInstance = GetModuleHandle(NULL);
     
@@ -94,7 +100,8 @@ WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return DefWindowProc(windowHandle, uMsg, wParam, lParam);
 }
 
-void DrawWindow(HWND windowHandle, RECT windowRect) {
+void 
+DrawWindow(HWND windowHandle, RECT windowRect) {
     PAINTSTRUCT ps;
     HDC deviceContext = BeginPaint(windowHandle, &ps);
     
@@ -142,13 +149,13 @@ GraphicsBuffer CreateGraphicsBuffer(int width, int height) {
     *gb.bitmapInfo = bmi;
     gb.width = width;
     gb.height = height;
-    gb.data = new uint32_t[width*height*pixelBytes]; // texture size * 4 bytes per pixel (RGBA)
+    gb.data = new u32[width*height*pixelBytes]; // texture size * 4 bytes per pixel (RGBA)
     
-    uint8_t* row = (uint8_t *)gb.data; // current row
+    u8* row = (u8 *)gb.data; // current row
     int rowSize = width*pixelBytes; // 2D array of pixels, mapped into a 1D array (column x is (width*x) in memory)
     
     for(int y = 0; y < height; y++) {
-        uint8_t* pixel = (uint8_t*)row;
+        u8* pixel = (u8*)row;
         
         for(int x = 0; x < width; x++) {
             // blue
