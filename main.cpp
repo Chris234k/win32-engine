@@ -14,7 +14,7 @@ typedef uint64_t u64;
 // types
 struct GraphicsBuffer {
     int width, height;
-    BITMAPINFO* bitmapInfo;
+    BITMAPINFO bitmapInfo;
     HBITMAP bitmapHandle;
     void* data;
 };
@@ -22,12 +22,16 @@ struct GraphicsBuffer {
 // forward declarations
 LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam);
 GraphicsBuffer CreateGraphicsBuffer(int width, int height);
-void DrawWindow(HWND windowHandle, RECT clientRect);
+void DrawBufferToWindow(GraphicsBuffer* buffer, HWND windowHandle, RECT clientRect);
+void WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b);
 
+
+int BYTES_PER_PIXEL = 4;
+bool IsGameRunning = true;
 
 // globals
-int SCREEN_WIDTH = 1024;
-int SCREEN_HEIGHT = 1024;
+int SCREEN_WIDTH = 512;
+int SCREEN_HEIGHT = 512;
 
 int BUFFER_WIDTH = 16;
 int BUFFER_HEIGHT = 16;
@@ -72,9 +76,13 @@ main() {
     graphicsBuffer = CreateGraphicsBuffer(BUFFER_WIDTH, BUFFER_HEIGHT);
     
     MSG msg = {};
-    while(GetMessage(&msg, NULL, 0, 0) > 0) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+    while(IsGameRunning) {
+        if(GetMessage(&msg, NULL, 0, 0) > 0) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        } else {
+            break;
+        }
     }
     
     return 0;
@@ -85,6 +93,7 @@ LRESULT CALLBACK
 WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch(uMsg) {
         case WM_DESTROY:
+            IsGameRunning = false;
             PostQuitMessage(0);
             return 0;
             
@@ -92,7 +101,7 @@ WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             {
                 RECT rect;
                 GetClientRect(windowHandle, &rect);
-                DrawWindow(windowHandle, rect);
+                DrawBufferToWindow(&graphicsBuffer, windowHandle, rect);
             }
             return 0;
     }
@@ -101,15 +110,15 @@ WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 }
 
 void 
-DrawWindow(HWND windowHandle, RECT windowRect) {
+DrawBufferToWindow(GraphicsBuffer* buffer, HWND windowHandle, RECT windowRect) {
     PAINTSTRUCT ps;
     HDC deviceContext = BeginPaint(windowHandle, &ps);
     
     // convert bitmap from graphics buffer into DIB format
-    GetDIBits(deviceContext, graphicsBuffer.bitmapHandle, 
-        0, graphicsBuffer.width,
+    GetDIBits(deviceContext, buffer->bitmapHandle, 
+        0, buffer->width,
         NULL,
-        graphicsBuffer.bitmapInfo,
+        &buffer->bitmapInfo,
         DIB_RGB_COLORS
     );
     
@@ -122,10 +131,10 @@ DrawWindow(HWND windowHandle, RECT windowRect) {
         width, height,
         
         0, 0, 
-        graphicsBuffer.width, graphicsBuffer.height,
+        buffer->width, buffer->height,
         
-        graphicsBuffer.data,
-        graphicsBuffer.bitmapInfo,
+        buffer->data,
+        &buffer->bitmapInfo,
         DIB_RGB_COLORS,
         SRCCOPY
     );
@@ -133,41 +142,47 @@ DrawWindow(HWND windowHandle, RECT windowRect) {
     EndPaint(windowHandle, &ps);
 }
 
-GraphicsBuffer CreateGraphicsBuffer(int width, int height) {    
-    int pixelBytes = 4;
-    
+GraphicsBuffer
+CreateGraphicsBuffer(int width, int height) {    
     BITMAPINFO bmi;
     memset(&bmi, 0, sizeof(bmi));
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = width;
     bmi.bmiHeader.biHeight = height;
     bmi.bmiHeader.biPlanes = 1;
-    bmi.bmiHeader.biBitCount = 8*pixelBytes;
+    bmi.bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
     bmi.bmiHeader.biCompression = BI_RGB;
     
     GraphicsBuffer gb;
-    *gb.bitmapInfo = bmi;
+    gb.bitmapInfo = bmi;
     gb.width = width;
     gb.height = height;
-    gb.data = new u32[width*height*pixelBytes]; // texture size * 4 bytes per pixel (RGBA)
+    gb.data = new u32[width*height*BYTES_PER_PIXEL]; // texture size * 4 bytes per pixel (RGBA)
     
-    u8* row = (u8 *)gb.data; // current row
-    int rowSize = width*pixelBytes; // 2D array of pixels, mapped into a 1D array (column x is (width*x) in memory)
+    WriteColorToBuffer(&gb, 255, 0, 0);
     
-    for(int y = 0; y < height; y++) {
+    return gb;
+}
+
+void 
+WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b) {
+    u8* row = (u8 *)buffer->data; // current row
+    int rowSize = buffer->width*BYTES_PER_PIXEL; // 2D array of pixels, mapped into a 1D array (column x is (width*x) in memory)
+    
+    for(int y = 0; y < buffer->height; y++) {
         u8* pixel = (u8*)row;
         
-        for(int x = 0; x < width; x++) {
+        for(int x = 0; x < buffer->width; x++) {
             // blue
-            *pixel = 0;
+            *pixel = b;
             pixel++;
             
             // green
-            *pixel = 0;
+            *pixel = g;
             pixel++;
             
             // red
-            *pixel = 255;
+            *pixel = r;
             pixel++;
             
             // alpha
@@ -178,6 +193,4 @@ GraphicsBuffer CreateGraphicsBuffer(int width, int height) {
         // move to next row
         row += rowSize;
     }
-    
-    return gb;
 }
