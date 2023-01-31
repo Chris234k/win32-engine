@@ -4,6 +4,7 @@
 
 #include <windows.h>
 #include <wingdi.h>
+#include <cstdio>
 #include "cstdint"   // uint32_t
 
 typedef uint8_t u8;
@@ -19,6 +20,11 @@ struct GraphicsBuffer {
     void* data;
 };
 
+struct Key {
+    u8 id;
+    bool isDown;
+};
+
 // forward declarations
 LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam);
 GraphicsBuffer CreateGraphicsBuffer(int width, int height);
@@ -26,17 +32,24 @@ void DrawBufferToWindow(GraphicsBuffer* buffer, HWND windowHandle, RECT clientRe
 void WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b);
 
 
+// TODO C++ consts
 int BYTES_PER_PIXEL = 4;
-bool IsGameRunning = true;
 
-// globals
 int SCREEN_WIDTH = 512;
 int SCREEN_HEIGHT = 512;
 
 int BUFFER_WIDTH = 16;
 int BUFFER_HEIGHT = 16;
 
+// globals
+bool IsGameRunning = true;
 GraphicsBuffer graphicsBuffer;
+
+
+// TODO key state cleanup. general purpose key storage ?
+// state map... 
+// not pressed -> down -> held -> up -> not pressed
+Key alpha1, alpha2, alpha3;
 
 
 int
@@ -54,8 +67,7 @@ main() {
     
     RegisterClass(&window);
     
-    HWND windowHandle = CreateWindowEx(
-        0, 
+    HWND windowHandle = CreateWindow(
         CLASS_NAME,
         L"Learn to Program Windows",
         WS_OVERLAPPEDWINDOW | WS_VISIBLE,
@@ -72,12 +84,29 @@ main() {
         return 0;
     }
     ShowWindow(windowHandle, SW_SHOWNORMAL);
+    RECT rect;
+    GetClientRect(windowHandle, &rect);
     
     graphicsBuffer = CreateGraphicsBuffer(BUFFER_WIDTH, BUFFER_HEIGHT);
     
+    // https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
+    alpha1.id = '1';
+    alpha2.id = '2';
+    alpha3.id = '3';
+    
+    u8 r, g, b;
+    
     MSG msg = {};
     while(IsGameRunning) {
-        if(GetMessage(&msg, NULL, 0, 0) > 0) {
+        r = alpha1.isDown ? 255 : 0;
+        g = alpha2.isDown ? 255 : 0;
+        b = alpha3.isDown ? 255 : 0;
+        
+        WriteColorToBuffer(&graphicsBuffer, r, g, b);
+        DrawBufferToWindow(&graphicsBuffer, windowHandle, rect);
+        InvalidateRect(windowHandle, &rect, true); // TODO this forces the entire window to redraw. Necessary?
+        
+        if(GetMessage(&msg, NULL, 0, 0) > 0) { // true unless WM_QUIT
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         } else {
@@ -92,6 +121,26 @@ main() {
 LRESULT CALLBACK
 WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch(uMsg) {
+        case WM_KEYDOWN:
+            if(wParam == alpha1.id) {
+                alpha1.isDown = true;
+            } else if(wParam == alpha2.id) {
+                alpha2.isDown = true;
+            } else if(wParam == alpha3.id) {
+                alpha3.isDown = true;
+            }
+            break;
+            
+        case WM_KEYUP:
+            if(wParam == alpha1.id) {
+                alpha1.isDown = false;
+            } else if(wParam == alpha2.id) {
+                alpha2.isDown = false;
+            } else if(wParam == alpha3.id) {
+                alpha3.isDown = false;
+            }
+            break;
+        
         case WM_DESTROY:
             IsGameRunning = false;
             PostQuitMessage(0);
@@ -113,14 +162,6 @@ void
 DrawBufferToWindow(GraphicsBuffer* buffer, HWND windowHandle, RECT windowRect) {
     PAINTSTRUCT ps;
     HDC deviceContext = BeginPaint(windowHandle, &ps);
-    
-    // convert bitmap from graphics buffer into DIB format
-    GetDIBits(deviceContext, buffer->bitmapHandle, 
-        0, buffer->width,
-        NULL,
-        &buffer->bitmapInfo,
-        DIB_RGB_COLORS
-    );
     
     int width = (windowRect.right - windowRect.left);
     int height = (windowRect.bottom - windowRect.top);
@@ -159,7 +200,8 @@ CreateGraphicsBuffer(int width, int height) {
     gb.height = height;
     gb.data = new u32[width*height*BYTES_PER_PIXEL]; // texture size * 4 bytes per pixel (RGBA)
     
-    WriteColorToBuffer(&gb, 255, 0, 0);
+    // clear to black
+    WriteColorToBuffer(&gb, 0, 0, 0);
     
     return gb;
 }
