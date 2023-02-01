@@ -20,9 +20,16 @@ struct GraphicsBuffer {
     void* data;
 };
 
-struct Key {
-    u8 id;
+// this is the game level input, "actions"
+// these map to real key presses at the engine level
+struct GameAction {
     bool isDown;
+};
+
+struct GameInputState {
+    GameAction red;
+    GameAction green;
+    GameAction blue;
 };
 
 // forward declarations
@@ -30,6 +37,7 @@ LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM 
 GraphicsBuffer CreateGraphicsBuffer(int width, int height);
 void DrawBufferToWindow(GraphicsBuffer* buffer, HWND windowHandle, RECT clientRect);
 void WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b);
+void Update(float dt);
 
 
 // TODO C++ consts
@@ -44,13 +52,8 @@ int BUFFER_HEIGHT = 16;
 // globals
 bool IsGameRunning = true;
 GraphicsBuffer graphicsBuffer;
-
-
-// TODO key state cleanup. general purpose key storage ?
-// state map... 
-// not pressed -> down -> held -> up -> not pressed
-Key alpha1, alpha2, alpha3;
-
+GameInputState input;
+u8 r, g, b;
 
 int
 main() {
@@ -89,32 +92,96 @@ main() {
     
     graphicsBuffer = CreateGraphicsBuffer(BUFFER_WIDTH, BUFFER_HEIGHT);
     
-    // https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
-    alpha1.id = '1';
-    alpha2.id = '2';
-    alpha3.id = '3';
+    LARGE_INTEGER prevTime;
+    LARGE_INTEGER frequency;
+    float MS_PER_UPDATE = 1.0/60.0;
+    float remainingTime = 0.0;
+    QueryPerformanceCounter(&prevTime);
     
-    u8 r, g, b;
+    input = {};
     
     MSG msg = {};
     while(IsGameRunning) {
-        r = alpha1.isDown ? 255 : 0;
-        g = alpha2.isDown ? 255 : 0;
-        b = alpha3.isDown ? 255 : 0;
+        LARGE_INTEGER currentTime;
+        QueryPerformanceCounter(&currentTime);
+        QueryPerformanceFrequency(&frequency);
         
+        LARGE_INTEGER elapsed;
+        elapsed.QuadPart = currentTime.QuadPart - prevTime.QuadPart;
+        elapsed.QuadPart *= 1000;
+        elapsed.QuadPart /= frequency.QuadPart;
+        
+        prevTime = currentTime;
+        remainingTime += elapsed.QuadPart;
+        
+        // input
+        while(PeekMessage(&msg, windowHandle, 0, 0, PM_REMOVE)) {
+            WPARAM wParam = msg.wParam;
+            switch(msg.message) {
+                
+                case WM_KEYDOWN:
+                case WM_KEYUP:
+                {
+                    WORD keyFlags = HIWORD(msg.lParam);
+                    
+                    // https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input#keystroke-message-flags
+                    bool wasDown = (keyFlags & KF_REPEAT) == KF_REPEAT;
+                    bool isDown = ((keyFlags & KF_UP) == KF_UP) == 0;
+                    
+                    if(wasDown != isDown) { // state has changed
+                        switch(wParam) {
+                            case '1':
+                                input.red.isDown = isDown;
+                                break;
+                                
+                            case '2':
+                                input.green.isDown = isDown;
+                                break;
+                                
+                            case '3':
+                                input.blue.isDown = isDown;
+                                break;
+                        }
+                    }
+                    break;
+                }
+                    
+                // passthrough to windowproc
+                default:
+                    TranslateMessage(&msg);
+                    DispatchMessage(&msg);
+                    break;
+            }
+        }
+        
+        
+        // TODO TODO TODO left off here
+        // when processing multiple updates in a single frame
+        // the input gets out of sync
+        // 
+        // i.e. the input should be down if it was down at the start of the frame
+        // i'm missing up/down events
+        // https://new.gafferongames.com/post/fix_your_timestep/
+        
+        // update
+        // while(remainingTime >= MS_PER_UPDATE) {
+            Update(MS_PER_UPDATE);
+            // remainingTime -= MS_PER_UPDATE;
+        // }
+
+        // render
         WriteColorToBuffer(&graphicsBuffer, r, g, b);
         DrawBufferToWindow(&graphicsBuffer, windowHandle, rect);
         InvalidateRect(windowHandle, &rect, true); // TODO this forces the entire window to redraw. Necessary?
-        
-        if(GetMessage(&msg, NULL, 0, 0) > 0) { // true unless WM_QUIT
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        } else {
-            break;
-        }
     }
     
     return 0;
+}
+
+void Update(float dt) {
+    r = input.red.isDown ? 255 : 0;
+    g = input.green.isDown ? 255 : 0;
+    b = input.blue.isDown ? 255 : 0;
 }
 
 
@@ -122,29 +189,14 @@ LRESULT CALLBACK
 WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch(uMsg) {
         case WM_KEYDOWN:
-            if(wParam == alpha1.id) {
-                alpha1.isDown = true;
-            } else if(wParam == alpha2.id) {
-                alpha2.isDown = true;
-            } else if(wParam == alpha3.id) {
-                alpha3.isDown = true;
-            }
+        case WM_KEYUP:
+            printf("ERROR: input in windowproc"); // PeekMessage in main loop must handle input
             break;
             
-        case WM_KEYUP:
-            if(wParam == alpha1.id) {
-                alpha1.isDown = false;
-            } else if(wParam == alpha2.id) {
-                alpha2.isDown = false;
-            } else if(wParam == alpha3.id) {
-                alpha3.isDown = false;
-            }
-            break;
-        
         case WM_DESTROY:
             IsGameRunning = false;
             PostQuitMessage(0);
-            return 0;
+            break;
             
         case WM_PAINT:
             {
