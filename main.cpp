@@ -6,6 +6,7 @@
 #include <wingdi.h>
 #include <cstdio>
 #include "cstdint"   // uint32_t
+#include "math.h"
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -53,7 +54,7 @@ int BUFFER_HEIGHT = 16;
 bool IsGameRunning = true;
 GraphicsBuffer graphicsBuffer;
 GameInputState input;
-u8 r, g, b;
+u8 windowRed, windowGreen, windowBlue;
 
 int
 main() {
@@ -87,34 +88,37 @@ main() {
         return 0;
     }
     ShowWindow(windowHandle, SW_SHOWNORMAL);
+    
+    
     RECT rect;
     GetClientRect(windowHandle, &rect);
     
     graphicsBuffer = CreateGraphicsBuffer(BUFFER_WIDTH, BUFFER_HEIGHT);
-    
-    LARGE_INTEGER prevTime;
-    LARGE_INTEGER frequency;
-    float MS_PER_UPDATE = 1.0/60.0;
-    float remainingTime = 0.0;
-    QueryPerformanceCounter(&prevTime);
-    
     input = {};
-    
     MSG msg = {};
+    
+    // timing
+    double time = 0.0;
+    double max_dt = 1.0 / 60.0;
+    LARGE_INTEGER currentTime;
+    LARGE_INTEGER frequency; // ticks per second
+    
+    QueryPerformanceCounter(&currentTime);
+    QueryPerformanceFrequency(&frequency); // fixed at system boot, need only query once
+    
     while(IsGameRunning) {
-        LARGE_INTEGER currentTime;
-        QueryPerformanceCounter(&currentTime);
-        QueryPerformanceFrequency(&frequency);
+        LARGE_INTEGER newTime;
+        QueryPerformanceCounter(&newTime);
         
-        LARGE_INTEGER elapsed;
-        elapsed.QuadPart = currentTime.QuadPart - prevTime.QuadPart;
-        elapsed.QuadPart *= 1000;
-        elapsed.QuadPart /= frequency.QuadPart;
+        LARGE_INTEGER elapsedMicroseconds;
+        elapsedMicroseconds.QuadPart = newTime.QuadPart - currentTime.QuadPart;
+        elapsedMicroseconds.QuadPart *= 1000000; // avoid loss of precision. convert to microseconds
+        elapsedMicroseconds.QuadPart /= frequency.QuadPart; // elapsed = ticks / ticks per second
         
-        prevTime = currentTime;
-        remainingTime += elapsed.QuadPart;
+        double frameTime = (double)elapsedMicroseconds.QuadPart / 1000; // convert to milliseconds
+        currentTime = newTime;
         
-        // input
+        // [input]
         while(PeekMessage(&msg, windowHandle, 0, 0, PM_REMOVE)) {
             WPARAM wParam = msg.wParam;
             switch(msg.message) {
@@ -154,36 +158,51 @@ main() {
             }
         }
         
-        
-        // TODO TODO TODO left off here
-        // when processing multiple updates in a single frame
-        // the input gets out of sync
-        // 
-        // i.e. the input should be down if it was down at the start of the frame
-        // i'm missing up/down events
+        // [update]
         // https://new.gafferongames.com/post/fix_your_timestep/
+        while(frameTime > 0.0) {
+            float deltaTime = std::min(frameTime, max_dt); // maximum step is max_dt
+            Update(deltaTime);
+            
+            frameTime -= deltaTime;
+            time += deltaTime;
+        }
         
-        // update
-        // while(remainingTime >= MS_PER_UPDATE) {
-            Update(MS_PER_UPDATE);
-            // remainingTime -= MS_PER_UPDATE;
-        // }
-
-        // render
-        WriteColorToBuffer(&graphicsBuffer, r, g, b);
-        DrawBufferToWindow(&graphicsBuffer, windowHandle, rect);
+        // [render]
+        // updates buffer, drawn at next WM_PAINT
+        WriteColorToBuffer(&graphicsBuffer, windowRed, windowGreen, windowBlue);
+        // queue WM_PAINT
         InvalidateRect(windowHandle, &rect, true); // TODO this forces the entire window to redraw. Necessary?
     }
     
     return 0;
 }
 
+float r, g, b;
 void Update(float dt) {
-    r = input.red.isDown ? 255 : 0;
-    g = input.green.isDown ? 255 : 0;
-    b = input.blue.isDown ? 255 : 0;
+    double growth = 0.1 * dt;
+    
+    if(input.red.isDown) {
+        r += growth;
+        r = fmod(r, 255);    
+        
+        windowRed = round(r);
+    }
+    
+    if(input.green.isDown) {
+        g += growth;
+        g = fmod(g, 255);
+        
+        windowGreen = round(g);
+    }
+    
+    if(input.blue.isDown) {
+        b += growth;
+        b = fmod(b, 255);
+        
+        windowBlue = round(b);
+    }
 }
-
 
 LRESULT CALLBACK
 WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam) {
