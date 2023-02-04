@@ -97,6 +97,7 @@ main() {
     gameGraphicsBuffer.height          = graphicsBuffer.height;
     gameGraphicsBuffer.bytesPerPixel   = graphicsBuffer.bytesPerPixel;
     gameGraphicsBuffer.data            = graphicsBuffer.data; // pointer to the engine's graphics buffer data. Game writes to it, and engine knows how to display it
+    GameInit(gameMemory);
     
     MSG msg = {};
     
@@ -148,6 +149,26 @@ main() {
                             case '3':
                                 gameInput.Alpha3.isDown = isDown;
                                 break;
+                                
+                            case 'W':
+                            case VK_UP:
+                                gameInput.Up.isDown = isDown;
+                                break;
+                                
+                            case 'S':
+                            case VK_DOWN:
+                                gameInput.Down.isDown = isDown;
+                                break;
+                                
+                            case 'A':
+                            case VK_LEFT:
+                                gameInput.Left.isDown = isDown;
+                                break;
+                                
+                            case 'D':
+                            case VK_RIGHT:
+                                gameInput.Right.isDown = isDown;
+                                break;
                         }
                     }
                     break;
@@ -170,7 +191,7 @@ main() {
                 deltaTime = max_dt;
             }
             
-            Update(gameMemory, &gameGraphicsBuffer, gameInput, deltaTime);
+            GameUpdate(gameMemory, gameInput, deltaTime);
             
             frameTime -= deltaTime;
             time += deltaTime;
@@ -178,6 +199,7 @@ main() {
         
         // [render]
         // queue WM_PAINT, forces the entire window to redraw
+        GameRender(gameMemory, &gameGraphicsBuffer);
         InvalidateRect(windowHandle, &rect, true);
     }
     

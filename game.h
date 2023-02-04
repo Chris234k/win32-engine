@@ -16,15 +16,18 @@ struct GameKey {
 };
 
 struct GameInput {
-    GameKey Alpha1;
-    GameKey Alpha2;
-    GameKey Alpha3;
+    GameKey Alpha1, Alpha2, Alpha3;
+    GameKey Up, Down, Left, Right;
 };
 
 struct GameState {
     float r, g, b;
+    float x, y;
 };
 
-void Update(GameMemory* gameMemory, GraphicsBuffer* grahpicsBuffer, GameInput input, float dt);
+
+void GameInit(GameMemory* memory);
+void GameUpdate(GameMemory* memory, GameInput input, float dt);
+void GameRender(GameMemory* memory, GraphicsBuffer* graphicBuffer);
 
 #endif
