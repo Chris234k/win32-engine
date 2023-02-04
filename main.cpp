@@ -2,59 +2,50 @@
 #define UNICODE
 #endif
 
+// os includes
 #include <windows.h>
 #include <wingdi.h>
-#include <cstdio>
+#include <cstdio>    // printf
 #include "cstdint"   // uint32_t
-#include "math.h"
+#include "math.h"    // fmod
 
+// typedefs
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
-// types
-struct GraphicsBuffer {
+// game includes
+// must come after typedefs
+#include "game.h"
+#include "game.cpp"
+
+// game has a similar structure, but the game cannot have any Windows dependencies (i.e. BITMAPINFO)
+struct Win32GraphicsBuffer {
     int width, height;
+    int bytesPerPixel;
     BITMAPINFO bitmapInfo;
-    HBITMAP bitmapHandle;
     void* data;
-};
-
-// this is the game level input, "actions"
-// these map to real key presses at the engine level
-struct GameAction {
-    bool isDown;
-};
-
-struct GameInputState {
-    GameAction red;
-    GameAction green;
-    GameAction blue;
 };
 
 // forward declarations
 LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam);
-GraphicsBuffer CreateGraphicsBuffer(int width, int height);
-void DrawBufferToWindow(GraphicsBuffer* buffer, HWND windowHandle, RECT clientRect);
-void WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b);
-void Update(float dt);
+void CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height);
+void DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT clientRect);
 
+// consts
+const int BYTES_PER_PIXEL = 4;
 
-// TODO C++ consts
-int BYTES_PER_PIXEL = 4;
+const int SCREEN_WIDTH = 512;
+const int SCREEN_HEIGHT = 512;
 
-int SCREEN_WIDTH = 512;
-int SCREEN_HEIGHT = 512;
-
-int BUFFER_WIDTH = 16;
-int BUFFER_HEIGHT = 16;
+const int BUFFER_WIDTH = 16;
+const int BUFFER_HEIGHT = 16;
 
 // globals
 bool IsGameRunning = true;
-GraphicsBuffer graphicsBuffer;
-GameInputState input;
-u8 windowRed, windowGreen, windowBlue;
+Win32GraphicsBuffer graphicsBuffer;
+GameInput gameInput;
 
 int
 main() {
@@ -92,9 +83,21 @@ main() {
     
     RECT rect;
     GetClientRect(windowHandle, &rect);
+    // engine allocations
+    CreateGraphicsBuffer(&graphicsBuffer, BUFFER_WIDTH, BUFFER_HEIGHT);
     
-    graphicsBuffer = CreateGraphicsBuffer(BUFFER_WIDTH, BUFFER_HEIGHT);
-    input = {};
+    // game allocations
+    int size = 1024 * 1024 * 1; // 1 MB
+    GameMemory* gameMemory = (GameMemory*)VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    GraphicsBuffer gameGraphicsBuffer = {};
+    gameInput = {};
+    
+    // pass along revelant data to the game
+    gameGraphicsBuffer.width           = graphicsBuffer.width;
+    gameGraphicsBuffer.height          = graphicsBuffer.height;
+    gameGraphicsBuffer.bytesPerPixel   = graphicsBuffer.bytesPerPixel;
+    gameGraphicsBuffer.data            = graphicsBuffer.data; // pointer to the engine's graphics buffer data. Game writes to it, and engine knows how to display it
+    
     MSG msg = {};
     
     // timing
@@ -135,15 +138,15 @@ main() {
                     if(wasDown != isDown) { // state has changed
                         switch(wParam) {
                             case '1':
-                                input.red.isDown = isDown;
+                                gameInput.Alpha1.isDown = isDown;
                                 break;
                                 
                             case '2':
-                                input.green.isDown = isDown;
+                                gameInput.Alpha2.isDown = isDown;
                                 break;
                                 
                             case '3':
-                                input.blue.isDown = isDown;
+                                gameInput.Alpha3.isDown = isDown;
                                 break;
                         }
                     }
@@ -166,48 +169,21 @@ main() {
             if(deltaTime > max_dt) { // maximum step is max_dt
                 deltaTime = max_dt;
             }
-            Update(deltaTime);
+            
+            Update(gameMemory, &gameGraphicsBuffer, gameInput, deltaTime);
             
             frameTime -= deltaTime;
             time += deltaTime;
         }
         
         // [render]
-        // updates buffer, drawn at next WM_PAINT
-        WriteColorToBuffer(&graphicsBuffer, windowRed, windowGreen, windowBlue);
-        // queue WM_PAINT
-        InvalidateRect(windowHandle, &rect, true); // TODO this forces the entire window to redraw. Necessary?
+        // queue WM_PAINT, forces the entire window to redraw
+        InvalidateRect(windowHandle, &rect, true);
     }
     
     VirtualFree(graphicsBuffer.data, 0, MEM_RELEASE);
     
     return 0;
-}
-
-float r, g, b;
-void Update(float dt) {
-    double growth = 0.1 * dt;
-    
-    if(input.red.isDown) {
-        r += growth;
-        r = fmod(r, 255);    
-        
-        windowRed = round(r);
-    }
-    
-    if(input.green.isDown) {
-        g += growth;
-        g = fmod(g, 255);
-        
-        windowGreen = round(g);
-    }
-    
-    if(input.blue.isDown) {
-        b += growth;
-        b = fmod(b, 255);
-        
-        windowBlue = round(b);
-    }
 }
 
 LRESULT CALLBACK
@@ -236,7 +212,7 @@ WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 }
 
 void 
-DrawBufferToWindow(GraphicsBuffer* buffer, HWND windowHandle, RECT windowRect) {
+DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT windowRect) {
     PAINTSTRUCT ps;
     HDC deviceContext = BeginPaint(windowHandle, &ps);
     
@@ -260,56 +236,20 @@ DrawBufferToWindow(GraphicsBuffer* buffer, HWND windowHandle, RECT windowRect) {
     EndPaint(windowHandle, &ps);
 }
 
-GraphicsBuffer
-CreateGraphicsBuffer(int width, int height) {    
-    BITMAPINFO bmi;
-    memset(&bmi, 0, sizeof(bmi));
-    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth = width;
-    bmi.bmiHeader.biHeight = height;
-    bmi.bmiHeader.biPlanes = 1;
-    bmi.bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
-    bmi.bmiHeader.biCompression = BI_RGB;
-    
-    GraphicsBuffer gb;
-    gb.bitmapInfo = bmi;
-    gb.width = width;
-    gb.height = height;
-    gb.data = VirtualAlloc(NULL, width*height*BYTES_PER_PIXEL, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); // texture size * 4 bytes per pixel (RGBA)
-    
-    // clear to blackx
-    WriteColorToBuffer(&gb, 0, 0, 0);
-    
-    return gb;
-}
-
 void 
-WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b) {
-    u8* row = (u8 *)buffer->data; // current row
-    int rowSize = buffer->width*BYTES_PER_PIXEL; // 2D array of pixels, mapped into a 1D array (column x is (width*x) in memory)
+CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height) {
+    BITMAPINFO bitmapInfo = {};
+    memset(&bitmapInfo, 0, sizeof(bitmapInfo));
+    bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bitmapInfo.bmiHeader.biWidth = width;
+    bitmapInfo.bmiHeader.biHeight = height;
+    bitmapInfo.bmiHeader.biPlanes = 1;
+    bitmapInfo.bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
+    bitmapInfo.bmiHeader.biCompression = BI_RGB;
     
-    for(int y = 0; y < buffer->height; y++) {
-        u8* pixel = (u8*)row;
-        
-        for(int x = 0; x < buffer->width; x++) {
-            // blue
-            *pixel = b;
-            pixel++;
-            
-            // green
-            *pixel = g;
-            pixel++;
-            
-            // red
-            *pixel = r;
-            pixel++;
-            
-            // alpha
-            *pixel = 0;
-            pixel++;
-        }
-        
-        // move to next row
-        row += rowSize;
-    }
+    buffer->width = width;
+    buffer->height = height;
+    buffer->bytesPerPixel = BYTES_PER_PIXEL;
+    buffer->bitmapInfo = bitmapInfo;
+    buffer->data = VirtualAlloc(NULL, width*height*BYTES_PER_PIXEL, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); // texture size * 4 bytes per pixel (RGBA)
 }
