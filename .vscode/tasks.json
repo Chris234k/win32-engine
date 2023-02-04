@@ -11,7 +11,8 @@
                 "${workspaceFolder}\\main.cpp",
                 "-o",
                 "${fileDirname}\\main.exe",
-                "-lgdi32"
+                "-lgdi32",
+                "-lDsound"
             ],
             "options": {
                 "cwd": "D:\\msys64\\mingw64\\bin"

@@ -4,7 +4,11 @@
 
 // os includes
 #include <windows.h>
-#include <wingdi.h>
+#include <wingdi.h>   // graphics
+#include <cguid.h>
+#include <dsound.h>   // sound
+
+
 #include <cstdio>    // printf
 #include "cstdint"   // uint32_t
 #include "math.h"    // fmod
@@ -41,6 +45,8 @@ const int SCREEN_HEIGHT = 512;
 
 const int BUFFER_WIDTH = 16;
 const int BUFFER_HEIGHT = 16;
+
+const float PI = 3.14159265358;
 
 // globals
 bool IsGameRunning = true;
@@ -86,9 +92,83 @@ main() {
     // engine allocations
     CreateGraphicsBuffer(&graphicsBuffer, BUFFER_WIDTH, BUFFER_HEIGHT);
     
+    // DirectSound setup
+    LPDIRECTSOUND directSound;
+    // first parameter NULL = default sound device
+    if(FAILED(DirectSoundCreate(NULL, &directSound, NULL))) {
+        printf("Failed to create DirectSound");
+        return 0;
+    } 
+    
+    if(FAILED(directSound->SetCooperativeLevel(windowHandle, DSSCL_PRIORITY))) {
+        printf("Failed to set DirectSound cooperative level");
+        return 0;
+    }
+    
+    // create sound buffer
+    LPDIRECTSOUNDBUFFER secondaryBuffer;
+    
+    // setup format
+    // 44.1 kHz 16-bit stereo
+    u32 sampleRate = 44100L;
+    u8 bitsPerSample = 16;
+    u8 channels = 2;
+    // https://learn.microsoft.com/en-us/windows/win32/multimedia/using-the-waveformatex-structure
+    WAVEFORMATEX waveFormat = {};
+    waveFormat.wFormatTag       = WAVE_FORMAT_PCM;
+    waveFormat.nChannels        = channels;
+    waveFormat.nSamplesPerSec   = sampleRate;
+    waveFormat.wBitsPerSample   = bitsPerSample;
+    waveFormat.nBlockAlign      = waveFormat.nChannels * waveFormat.wBitsPerSample / 8;
+    waveFormat.nAvgBytesPerSec  = waveFormat.nSamplesPerSec * waveFormat.nBlockAlign;
+    waveFormat.cbSize           = 0;
+    
+    // setup actual buffer
+    DSBUFFERDESC soundBufferDesc = {};
+    soundBufferDesc.dwSize = sizeof(DSBUFFERDESC);
+    soundBufferDesc.dwBufferBytes = sampleRate * bitsPerSample / 8 * channels * 1;
+    soundBufferDesc.dwReserved = 0;
+    soundBufferDesc.lpwfxFormat = &waveFormat;
+    
+    if(FAILED(directSound->CreateSoundBuffer(&soundBufferDesc, &secondaryBuffer, NULL))) {
+        printf("Failed to create DirectSound buffer");
+        return 0;
+    }
+    
+    u8* bytes;
+    DWORD numBytesToWrite;
+    
+    if(FAILED(secondaryBuffer->Lock(0, 0, (void **)&bytes, &numBytesToWrite, NULL, NULL, DSBLOCK_ENTIREBUFFER))) {
+        printf("Failed to lock DirectSound secondary buffer");
+    }
+    
+    int volume = 50;
+    int middleC = 256 / channels; // TODO TODO TODO is this the correct tone?
+    // copy in data
+    for(DWORD i = 0; i < numBytesToWrite; i++) {
+		float pos = middleC / (float)sampleRate * (float)i;
+        
+		// convert to radians
+		float r = (pos - floor(pos)) * 2 * PI;
+		float tone = sin(r);
+
+		// change multiplier to change amplitude of wave (aka volume)
+		bytes[i] = volume+(tone*volume);
+    }
+    
+    if(FAILED(secondaryBuffer->Unlock((void**) &bytes, numBytesToWrite, NULL, 0))) {
+        // TODO TODO TODO this is failing
+        printf("Failed to unlock DirectSound secondary buffer");
+    }
+    
+    if(FAILED(secondaryBuffer->Play(0, 0, DSBPLAY_LOOPING))) {
+        printf("Failed to play DirectSound secondary buffer");
+    }
+    
+    
     // game allocations
-    int size = 1024 * 1024 * 1; // 1 MB
-    GameMemory* gameMemory = (GameMemory*)VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    int gameMemorySize = 1024 * 1024 * 1; 
+    GameMemory* gameMemory = (GameMemory*)VirtualAlloc(NULL, gameMemorySize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     GraphicsBuffer gameGraphicsBuffer = {};
     gameInput = {};
     
