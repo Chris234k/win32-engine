@@ -161,7 +161,11 @@ main() {
         // [update]
         // https://new.gafferongames.com/post/fix_your_timestep/
         while(frameTime > 0.0) {
-            float deltaTime = std::min(frameTime, max_dt); // maximum step is max_dt
+            float deltaTime = frameTime;
+            
+            if(deltaTime > max_dt) { // maximum step is max_dt
+                deltaTime = max_dt;
+            }
             Update(deltaTime);
             
             frameTime -= deltaTime;
@@ -174,6 +178,8 @@ main() {
         // queue WM_PAINT
         InvalidateRect(windowHandle, &rect, true); // TODO this forces the entire window to redraw. Necessary?
     }
+    
+    VirtualFree(graphicsBuffer.data, 0, MEM_RELEASE);
     
     return 0;
 }
@@ -269,9 +275,9 @@ CreateGraphicsBuffer(int width, int height) {
     gb.bitmapInfo = bmi;
     gb.width = width;
     gb.height = height;
-    gb.data = new u32[width*height*BYTES_PER_PIXEL]; // texture size * 4 bytes per pixel (RGBA)
+    gb.data = VirtualAlloc(NULL, width*height*BYTES_PER_PIXEL, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); // texture size * 4 bytes per pixel (RGBA)
     
-    // clear to black
+    // clear to blackx
     WriteColorToBuffer(&gb, 0, 0, 0);
     
     return gb;
