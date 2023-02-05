@@ -4,6 +4,8 @@ void WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b, int xPos, int 
 
 void 
 GameInit(GameMemory* memory) {
+    assert(sizeof(GameState) <= (memory->size));
+    
     GameState* state = (GameState*) memory;
     
     state->r = 255;

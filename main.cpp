@@ -13,11 +13,19 @@
 #include "cstdint"   // uint32_t
 #include "math.h"    // fmod
 
+// write to the null pointer to halt the program
+#define assert(expression) if(!(expression)) (*(int *) 0 = 0) 
+
 // typedefs
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
+
+typedef int8_t int8;
+typedef int16_t int16;
+typedef int32_t int32;
+typedef int64_t int64;
 
 // game includes
 // must come after typedefs
@@ -142,6 +150,8 @@ main() {
         printf("Failed to lock DirectSound secondary buffer");
     }
     
+    assert(block2BytesToWrite == 0);
+    
     int volume = 30;
     int middleC = 261 / waveFormat.nBlockAlign;
     // copy in data
@@ -165,10 +175,11 @@ main() {
         printf("Failed to play DirectSound secondary buffer");
     }
     
-    
     // game allocations
     int gameMemorySize = 1024 * 1024 * 1; 
     GameMemory* gameMemory = (GameMemory*)VirtualAlloc(NULL, gameMemorySize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    gameMemory->size = gameMemorySize;
+    
     GraphicsBuffer gameGraphicsBuffer = {};
     gameInput = {};
     

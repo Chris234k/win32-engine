@@ -1,7 +1,9 @@
 #ifndef GAME_H
 #define GAME_H
 
-struct GameMemory {};
+struct GameMemory {
+    int64 size;
+};
 
 struct GraphicsBuffer {
     int width, height;
