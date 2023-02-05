@@ -135,29 +135,29 @@ main() {
         return 0;
     }
     
-    u8* bytes;
-    DWORD numBytesToWrite;
+    u8 *byteBlock1, *byteBlock2;
+    DWORD block1BytesToWrite, block2BytesToWrite;
     
-    if(FAILED(secondaryBuffer->Lock(0, 0, (void **)&bytes, &numBytesToWrite, NULL, NULL, DSBLOCK_ENTIREBUFFER))) {
+    if(FAILED(secondaryBuffer->Lock(0, 0, (void**)&byteBlock1, &block1BytesToWrite, (void**)&byteBlock2, &block2BytesToWrite, DSBLOCK_ENTIREBUFFER))) {
         printf("Failed to lock DirectSound secondary buffer");
     }
     
-    int volume = 50;
-    int middleC = 256 / channels; // TODO TODO TODO is this the correct tone?
+    int volume = 30;
+    int middleC = 261 / waveFormat.nBlockAlign;
     // copy in data
-    for(DWORD i = 0; i < numBytesToWrite; i++) {
-		float pos = middleC / (float)sampleRate * (float)i;
+    for(DWORD i = 0; i < block1BytesToWrite; i++) {
+        float pos = middleC / (float)sampleRate * (float)i;
         
-		// convert to radians
-		float r = (pos - floor(pos)) * 2 * PI;
-		float tone = sin(r);
+        // convert to radians
+        float remainder = (pos - floor(pos));
+        float radians = remainder * 2 * PI;
+        float tone = sin(radians);
 
-		// change multiplier to change amplitude of wave (aka volume)
-		bytes[i] = volume+(tone*volume);
+        // change multiplier to change amplitude of wave (aka volume)
+        byteBlock1[i] = volume+(tone*volume);
     }
     
-    if(FAILED(secondaryBuffer->Unlock((void**) &bytes, numBytesToWrite, NULL, 0))) {
-        // TODO TODO TODO this is failing
+    if(secondaryBuffer->Unlock(byteBlock1, block1BytesToWrite, byteBlock2, block2BytesToWrite)) {
         printf("Failed to unlock DirectSound secondary buffer");
     }
     
