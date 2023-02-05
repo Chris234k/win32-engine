@@ -152,7 +152,7 @@ main() {
     
     assert(block2BytesToWrite == 0);
     
-    int volume = 30;
+    int volume = 20;
     int middleC = 261 / waveFormat.nBlockAlign;
     // copy in data
     for(DWORD i = 0; i < block1BytesToWrite; i++) {
@@ -163,8 +163,8 @@ main() {
         float radians = remainder * 2 * PI;
         float tone = sin(radians);
 
-        // change multiplier to change amplitude of wave (aka volume)
-        byteBlock1[i] = volume+(tone*volume);
+        // amplitude of the wave == volume
+        byteBlock1[i] = volume * tone;
     }
     
     if(secondaryBuffer->Unlock(byteBlock1, block1BytesToWrite, byteBlock2, block2BytesToWrite)) {
