@@ -27,6 +27,9 @@ typedef int16_t int16;
 typedef int32_t int32;
 typedef int64_t int64;
 
+typedef float f32; // TODO this is platform dependent? compiler dependent?
+typedef double f64;
+
 // game includes
 // must come after typedefs
 #include "game.h"
@@ -37,13 +40,22 @@ struct Win32GraphicsBuffer {
     int width, height;
     int bytesPerPixel;
     BITMAPINFO bitmapInfo;
-    void* data;
+    u8* data;
+};
+
+struct Win32SoundBuffer {
+    u16 blockAlign;
+    u32 sampleRate; 
+    LPDIRECTSOUNDBUFFER secondary;
+    f32* data;
 };
 
 // forward declarations
-LRESULT CALLBACK WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam);
-void CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height);
-void DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT clientRect);
+LRESULT CALLBACK Win32_WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam);
+void Win32_CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height);
+void Win32_DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT clientRect);
+bool Win32_CreateSoundBuffer(Win32SoundBuffer* buffer, HWND windowHandle);
+bool Win32_WriteSoundToDevice(Win32SoundBuffer* buffer);
 
 // consts
 const int BYTES_PER_PIXEL = 4;
@@ -59,6 +71,7 @@ const float PI = 3.14159265358;
 // globals
 bool IsGameRunning = true;
 Win32GraphicsBuffer graphicsBuffer;
+Win32SoundBuffer soundBuffer;
 GameInput gameInput;
 
 int
@@ -70,7 +83,7 @@ main() {
     WNDCLASS window = {};
     
     window.style = CS_HREDRAW | CS_VREDRAW; // redraw when resized
-    window.lpfnWndProc = WindowProc;
+    window.lpfnWndProc = Win32_WindowProc;
     window.hInstance = hInstance;
     window.lpszClassName = CLASS_NAME;
     
@@ -98,82 +111,11 @@ main() {
     RECT rect;
     GetClientRect(windowHandle, &rect);
     // engine allocations
-    CreateGraphicsBuffer(&graphicsBuffer, BUFFER_WIDTH, BUFFER_HEIGHT);
-    
-    // DirectSound setup
-    LPDIRECTSOUND directSound;
-    // first parameter NULL = default sound device
-    if(FAILED(DirectSoundCreate(NULL, &directSound, NULL))) {
-        printf("Failed to create DirectSound");
-        return 0;
-    } 
-    
-    if(FAILED(directSound->SetCooperativeLevel(windowHandle, DSSCL_PRIORITY))) {
-        printf("Failed to set DirectSound cooperative level");
+    Win32_CreateGraphicsBuffer(&graphicsBuffer, BUFFER_WIDTH, BUFFER_HEIGHT);
+    if(!Win32_CreateSoundBuffer(&soundBuffer, windowHandle)) {
         return 0;
     }
-    
-    // create sound buffer
-    LPDIRECTSOUNDBUFFER secondaryBuffer;
-    
-    // setup format
-    // 44.1 kHz 16-bit stereo
-    u32 sampleRate = 44100L;
-    u8 bitsPerSample = 16;
-    u8 channels = 2;
-    // https://learn.microsoft.com/en-us/windows/win32/multimedia/using-the-waveformatex-structure
-    WAVEFORMATEX waveFormat = {};
-    waveFormat.wFormatTag       = WAVE_FORMAT_PCM;
-    waveFormat.nChannels        = channels;
-    waveFormat.nSamplesPerSec   = sampleRate;
-    waveFormat.wBitsPerSample   = bitsPerSample;
-    waveFormat.nBlockAlign      = waveFormat.nChannels * waveFormat.wBitsPerSample / 8;
-    waveFormat.nAvgBytesPerSec  = waveFormat.nSamplesPerSec * waveFormat.nBlockAlign;
-    waveFormat.cbSize           = 0;
-    
-    // setup actual buffer
-    DSBUFFERDESC soundBufferDesc = {};
-    soundBufferDesc.dwSize = sizeof(DSBUFFERDESC);
-    soundBufferDesc.dwBufferBytes = sampleRate * bitsPerSample / 8 * channels * 1;
-    soundBufferDesc.dwReserved = 0;
-    soundBufferDesc.lpwfxFormat = &waveFormat;
-    
-    if(FAILED(directSound->CreateSoundBuffer(&soundBufferDesc, &secondaryBuffer, NULL))) {
-        printf("Failed to create DirectSound buffer");
-        return 0;
-    }
-    
-    u8 *byteBlock1, *byteBlock2;
-    DWORD block1BytesToWrite, block2BytesToWrite;
-    
-    if(FAILED(secondaryBuffer->Lock(0, 0, (void**)&byteBlock1, &block1BytesToWrite, (void**)&byteBlock2, &block2BytesToWrite, DSBLOCK_ENTIREBUFFER))) {
-        printf("Failed to lock DirectSound secondary buffer");
-    }
-    
-    assert(block2BytesToWrite == 0);
-    
-    int volume = 20;
-    int middleC = 261 / waveFormat.nBlockAlign;
-    // copy in data
-    for(DWORD i = 0; i < block1BytesToWrite; i++) {
-        float pos = middleC / (float)sampleRate * (float)i;
-        
-        // convert to radians
-        float remainder = (pos - floor(pos));
-        float radians = remainder * 2 * PI;
-        float tone = sin(radians);
-
-        // amplitude of the wave == volume
-        byteBlock1[i] = volume * tone;
-    }
-    
-    if(secondaryBuffer->Unlock(byteBlock1, block1BytesToWrite, byteBlock2, block2BytesToWrite)) {
-        printf("Failed to unlock DirectSound secondary buffer");
-    }
-    
-    if(FAILED(secondaryBuffer->Play(0, 0, DSBPLAY_LOOPING))) {
-        printf("Failed to play DirectSound secondary buffer");
-    }
+    Win32_WriteSoundToDevice(&soundBuffer);
     
     // game allocations
     int gameMemorySize = 1024 * 1024 * 1; 
@@ -187,7 +129,7 @@ main() {
     gameGraphicsBuffer.width           = graphicsBuffer.width;
     gameGraphicsBuffer.height          = graphicsBuffer.height;
     gameGraphicsBuffer.bytesPerPixel   = graphicsBuffer.bytesPerPixel;
-    gameGraphicsBuffer.data            = graphicsBuffer.data; // pointer to the engine's graphics buffer data. Game writes to it, and engine knows how to display it
+    gameGraphicsBuffer.data            = (u8*) graphicsBuffer.data; // pointer to the engine's graphics buffer data. Game writes to it, and engine knows how to display it
     GameInit(gameMemory);
     
     MSG msg = {};
@@ -295,12 +237,13 @@ main() {
     }
     
     VirtualFree(graphicsBuffer.data, 0, MEM_RELEASE);
+    VirtualFree(soundBuffer.data, 0, MEM_RELEASE);
     
     return 0;
 }
 
 LRESULT CALLBACK
-WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+Win32_WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch(uMsg) {
         case WM_KEYDOWN:
         case WM_KEYUP:
@@ -316,7 +259,7 @@ WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             {
                 RECT rect;
                 GetClientRect(windowHandle, &rect);
-                DrawBufferToWindow(&graphicsBuffer, windowHandle, rect);
+                Win32_DrawBufferToWindow(&graphicsBuffer, windowHandle, rect);
             }
             return 0;
     }
@@ -325,7 +268,7 @@ WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 }
 
 void 
-DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT windowRect) {
+Win32_DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT windowRect) {
     PAINTSTRUCT ps;
     HDC deviceContext = BeginPaint(windowHandle, &ps);
     
@@ -350,9 +293,9 @@ DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT windowRe
 }
 
 void 
-CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height) {
+Win32_CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height) {
     BITMAPINFO bitmapInfo = {};
-    memset(&bitmapInfo, 0, sizeof(bitmapInfo));
+    memset(&bitmapInfo, 0, sizeof(bitmapInfo)); // TODO necessary?
     bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bitmapInfo.bmiHeader.biWidth = width;
     bitmapInfo.bmiHeader.biHeight = height;
@@ -364,5 +307,98 @@ CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height) {
     buffer->height = height;
     buffer->bytesPerPixel = BYTES_PER_PIXEL;
     buffer->bitmapInfo = bitmapInfo;
-    buffer->data = VirtualAlloc(NULL, width*height*BYTES_PER_PIXEL, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); // texture size * 4 bytes per pixel (RGBA)
+    buffer->data = (u8*) VirtualAlloc(NULL, width*height*BYTES_PER_PIXEL, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); // texture size * 4 bytes per pixel (RGBA)
+}
+
+bool 
+Win32_CreateSoundBuffer(Win32SoundBuffer* buffer, HWND windowHandle) {
+        // DirectSound setup
+    LPDIRECTSOUND directSound;
+    // first parameter NULL = default sound device
+    if(FAILED(DirectSoundCreate(NULL, &directSound, NULL))) {
+        printf("Failed to create DirectSound\n");
+        return false;
+    } 
+    
+    if(FAILED(directSound->SetCooperativeLevel(windowHandle, DSSCL_PRIORITY))) {
+        printf("Failed to set DirectSound cooperative level\n");
+        return false;
+    }
+    
+    // create sound buffer
+    LPDIRECTSOUNDBUFFER secondaryBuffer;
+    
+    // setup format
+    // 44.1 kHz 16-bit stereo
+    u32 sampleRate = 44100L;
+    u8 bitsPerSample = 16;
+    u8 channels = 2;
+    // https://learn.microsoft.com/en-us/windows/win32/multimedia/using-the-waveformatex-structure
+    WAVEFORMATEX waveFormat = {};
+    waveFormat.wFormatTag       = WAVE_FORMAT_PCM;
+    waveFormat.nChannels        = channels;
+    waveFormat.nSamplesPerSec   = sampleRate;
+    waveFormat.wBitsPerSample   = bitsPerSample;
+    waveFormat.nBlockAlign      = waveFormat.nChannels * waveFormat.wBitsPerSample / 8;
+    waveFormat.nAvgBytesPerSec  = waveFormat.nSamplesPerSec * waveFormat.nBlockAlign;
+    waveFormat.cbSize           = 0;
+    
+    // setup actual buffer
+    DSBUFFERDESC soundBufferDesc = {};
+    soundBufferDesc.dwSize = sizeof(DSBUFFERDESC);
+    soundBufferDesc.dwBufferBytes = sampleRate * bitsPerSample / 8 * channels * 1;
+    soundBufferDesc.dwReserved = 0;
+    soundBufferDesc.lpwfxFormat = &waveFormat;
+    
+    if(FAILED(directSound->CreateSoundBuffer(&soundBufferDesc, &secondaryBuffer, NULL))) {
+        printf("Failed to create DirectSound buffer\n");
+        return false;
+    }
+    
+    buffer->blockAlign = waveFormat.nBlockAlign;
+    buffer->sampleRate = waveFormat.nSamplesPerSec;
+    buffer->secondary = secondaryBuffer;
+    buffer->data = (f32*)VirtualAlloc(NULL, soundBufferDesc.dwBufferBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    
+    return true;
+}
+
+bool
+Win32_WriteSoundToDevice(Win32SoundBuffer* buffer) {
+    u8 *byteBlock1, *byteBlock2;
+    DWORD block1BytesToWrite, block2BytesToWrite;
+    
+    if(FAILED(buffer->secondary->Lock(0, 0, (void**)&byteBlock1, &block1BytesToWrite, (void**)&byteBlock2, &block2BytesToWrite, DSBLOCK_ENTIREBUFFER))) {
+        printf("Failed to lock DirectSound secondary buffer\n");
+        return false;
+    }
+    
+    assert(block2BytesToWrite == 0);
+    
+    int volume = 20;
+    int middleC = 261 / buffer->blockAlign;
+    // copy in data
+    for(DWORD i = 0; i < block1BytesToWrite; i++) {
+        f32 pos = middleC / (f32)buffer->sampleRate * (f32)i;
+        
+        // convert to radians
+        f32 remainder = (pos - floor(pos));
+        f32 radians = remainder * 2 * PI;
+        f32 tone = sin(radians);
+
+        // amplitude of the wave == volume
+        byteBlock1[i] = volume * tone;
+    }
+    
+    if(buffer->secondary->Unlock(byteBlock1, block1BytesToWrite, byteBlock2, block2BytesToWrite)) {
+        printf("Failed to unlock DirectSound secondary buffer\n");
+        return false;
+    }
+    
+    if(FAILED(buffer->secondary->Play(0, 0, DSBPLAY_LOOPING))) {
+        printf("Failed to play DirectSound secondary buffer\n");
+        return false;
+    }
+    
+    return true;
 }

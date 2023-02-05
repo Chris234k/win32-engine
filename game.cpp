@@ -62,7 +62,7 @@ GameRender(GameMemory* memory, GraphicsBuffer* graphicsBuffer) {
 
 void 
 WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b, int xPos, int yPos) {
-    u8* row = (u8 *)buffer->data; // current row
+    u8* row = buffer->data; // current row
     int rowSize = buffer->width*buffer->bytesPerPixel; // 2D array of pixels, mapped into a 1D array (column x is (width*x) in memory)
     
     for(int y = 0; y < buffer->height; y++) {

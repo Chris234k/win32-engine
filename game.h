@@ -8,8 +8,15 @@ struct GameMemory {
 struct GraphicsBuffer {
     int width, height;
     int bytesPerPixel;
-    void* data;
+    u8* data;
 };
+
+// TODO TODO TODO game sound buffer ?
+// struct SoundBuffer {
+//     u16 blockAlign;
+//     u32 sampleRate;
+//     f32* data;
+// };
 
 // this is the game level input
 // these map to real key presses at the engine level
