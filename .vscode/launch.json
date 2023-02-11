@@ -10,7 +10,7 @@
             "request": "launch",
             "cwd": "${workspaceFolder}",
             "program": "${workspaceFolder}\\main.exe",
-            "miDebuggerPath": "D:\\msys64\\ucrt64\\bin\\gdb.exe",
+            "miDebuggerPath": "gdb.exe",
             "MIMode": "gdb",
             "launchCompleteCommand": "exec-run",
         },

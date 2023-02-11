@@ -4,7 +4,7 @@
         {
             "type": "cppbuild",
             "label": "C/C++: g++.exe build active file",
-            "command": "D:\\msys64\\ucrt64\\bin\\g++.exe",
+            "command": "g++.exe",
             "args": [
                 "-fdiagnostics-color=always",
                 "-g",
@@ -14,9 +14,6 @@
                 "-lgdi32",
                 "-lDsound"
             ],
-            "options": {
-                "cwd": "D:\\msys64\\mingw64\\bin"
-            },
             "problemMatcher": [
                 "$gcc"
             ],
@@ -24,7 +21,6 @@
                 "kind": "build",
                 "isDefault": true
             },
-            "detail": "compiler: D:\\msys64\\ucrt64\\bin"
         }
     ]
 }
