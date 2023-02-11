@@ -44,8 +44,14 @@ struct Win32GraphicsBuffer {
 };
 
 struct Win32SoundBuffer {
+    u32 sampleIndex;
+    u32 latencySampleCount;
+    
     u16 blockAlign;
-    u32 sampleRate; 
+    u32 samplesPerSecond;
+    u8 bytesPerSample;
+    
+    u32 bufferSize;
     LPDIRECTSOUNDBUFFER secondary;
     f32* data;
 };
@@ -55,7 +61,7 @@ LRESULT CALLBACK Win32_WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, L
 void Win32_CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height);
 void Win32_DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT clientRect);
 bool Win32_CreateSoundBuffer(Win32SoundBuffer* buffer, HWND windowHandle);
-bool Win32_WriteSoundToDevice(Win32SoundBuffer* buffer);
+void Win32_WriteSoundToDevice(DWORD startingByte, DWORD numBytesToWrite, Win32SoundBuffer* buffer, f32 note);
 
 // consts
 const int BYTES_PER_PIXEL = 4;
@@ -115,7 +121,11 @@ main() {
     if(!Win32_CreateSoundBuffer(&soundBuffer, windowHandle)) {
         return 0;
     }
-    Win32_WriteSoundToDevice(&soundBuffer);
+    
+    if(FAILED(soundBuffer.secondary->Play(0, 0, DSBPLAY_LOOPING))) {
+        printf("Failed to play DirectSound secondary buffer\n");
+        return false;
+    }
     
     // game allocations
     int gameMemorySize = 1024 * 1024 * 1; 
@@ -130,6 +140,9 @@ main() {
     gameGraphicsBuffer.height          = graphicsBuffer.height;
     gameGraphicsBuffer.bytesPerPixel   = graphicsBuffer.bytesPerPixel;
     gameGraphicsBuffer.data            = (u8*) graphicsBuffer.data; // pointer to the engine's graphics buffer data. Game writes to it, and engine knows how to display it
+    
+    SoundBuffer gameSoundBuffer = {};
+
     GameInit(gameMemory);
     
     MSG msg = {};
@@ -224,11 +237,31 @@ main() {
                 deltaTime = max_dt;
             }
             
-            GameUpdate(gameMemory, gameInput, deltaTime);
+            GameUpdate(gameMemory, gameInput, &gameSoundBuffer, deltaTime);
             
             frameTime -= deltaTime;
             time += deltaTime;
         }
+        
+        
+        DWORD playCursor;
+        soundBuffer.secondary->GetCurrentPosition(&playCursor, 0);
+        
+        // cursor is greater unless circular buffer wraps around
+        u32 startingByte = (soundBuffer.sampleIndex*soundBuffer.bytesPerSample) % soundBuffer.bufferSize;
+        u32 targetCursorPosition = (playCursor + soundBuffer.latencySampleCount) % soundBuffer.bufferSize;
+        u32 bytes;
+        if(startingByte == targetCursorPosition) {
+            bytes = soundBuffer.bufferSize;
+        } else if(startingByte > targetCursorPosition) {
+            // |--c----b--|
+            bytes = (soundBuffer.bufferSize - startingByte) + targetCursorPosition;
+        } else {
+            // |--b----c--|
+            bytes = (targetCursorPosition - startingByte);
+        }
+        
+        Win32_WriteSoundToDevice(startingByte, bytes, &soundBuffer, gameSoundBuffer.note);
         
         // [render]
         // queue WM_PAINT, forces the entire window to redraw
@@ -329,24 +362,28 @@ Win32_CreateSoundBuffer(Win32SoundBuffer* buffer, HWND windowHandle) {
     LPDIRECTSOUNDBUFFER secondaryBuffer;
     
     // setup format
-    // 44.1 kHz 16-bit stereo
-    u32 sampleRate = 44100L;
-    u8 bitsPerSample = 16;
+    // 48 kHz 16-bit stereo
+    u32 samplesPerSecond = 48000;
     u8 channels = 2;
+    u32 bitsPerSample = sizeof(u16) * 8;
+    u32 bytesPerSample = bitsPerSample / 8;
+    
+    const f32 LATENCY_MS = 10.0 / 1000.0;
+    
     // https://learn.microsoft.com/en-us/windows/win32/multimedia/using-the-waveformatex-structure
     WAVEFORMATEX waveFormat = {};
     waveFormat.wFormatTag       = WAVE_FORMAT_PCM;
     waveFormat.nChannels        = channels;
-    waveFormat.nSamplesPerSec   = sampleRate;
+    waveFormat.nSamplesPerSec   = samplesPerSecond;
     waveFormat.wBitsPerSample   = bitsPerSample;
-    waveFormat.nBlockAlign      = waveFormat.nChannels * waveFormat.wBitsPerSample / 8;
+    waveFormat.nBlockAlign      = bytesPerSample * channels;
     waveFormat.nAvgBytesPerSec  = waveFormat.nSamplesPerSec * waveFormat.nBlockAlign;
     waveFormat.cbSize           = 0;
     
     // setup actual buffer
     DSBUFFERDESC soundBufferDesc = {};
     soundBufferDesc.dwSize = sizeof(DSBUFFERDESC);
-    soundBufferDesc.dwBufferBytes = sampleRate * bitsPerSample / 8 * channels * 1;
+    soundBufferDesc.dwBufferBytes = samplesPerSecond * bytesPerSample;
     soundBufferDesc.dwReserved = 0;
     soundBufferDesc.lpwfxFormat = &waveFormat;
     
@@ -356,49 +393,72 @@ Win32_CreateSoundBuffer(Win32SoundBuffer* buffer, HWND windowHandle) {
     }
     
     buffer->blockAlign = waveFormat.nBlockAlign;
-    buffer->sampleRate = waveFormat.nSamplesPerSec;
+    buffer->samplesPerSecond = waveFormat.nSamplesPerSec;
+    buffer->bytesPerSample = bytesPerSample;
+    buffer->latencySampleCount = buffer->samplesPerSecond * LATENCY_MS;
+    buffer->bufferSize = soundBufferDesc.dwBufferBytes;
     buffer->secondary = secondaryBuffer;
     buffer->data = (f32*)VirtualAlloc(NULL, soundBufferDesc.dwBufferBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     
     return true;
 }
 
-bool
-Win32_WriteSoundToDevice(Win32SoundBuffer* buffer) {
-    u8 *byteBlock1, *byteBlock2;
-    DWORD block1BytesToWrite, block2BytesToWrite;
+void
+Win32_WriteSoundToDevice(DWORD startingByte, DWORD numBytesToWrite, Win32SoundBuffer* buffer, f32 note) {
+    assert(numBytesToWrite > 0);
     
-    if(FAILED(buffer->secondary->Lock(0, 0, (void**)&byteBlock1, &block1BytesToWrite, (void**)&byteBlock2, &block2BytesToWrite, DSBLOCK_ENTIREBUFFER))) {
-        printf("Failed to lock DirectSound secondary buffer\n");
-        return false;
+    u8 *byteBlock1, *byteBlock2;
+    DWORD numBlock1Bytes, numBlock2Bytes;
+    
+    if(FAILED(buffer->secondary->Lock(startingByte, numBytesToWrite, (void**)&byteBlock1, &numBlock1Bytes, (void**)&byteBlock2, &numBlock2Bytes, 0))) {
+        printf("Failed to lock DirectSound secondary buffer.\n");
+        return;
     }
     
-    assert(block2BytesToWrite == 0);
-    
-    int volume = 20;
-    int middleC = 261 / buffer->blockAlign;
+    const int VOLUME = 20;
+    f32 noteSample = note / buffer->blockAlign / (f32)buffer->samplesPerSecond;
+
+    DWORD block1SampleCount = numBlock1Bytes / buffer->bytesPerSample;
+    DWORD block2SampleCount = numBlock2Bytes / buffer->bytesPerSample;
+
     // copy in data
-    for(DWORD i = 0; i < block1BytesToWrite; i++) {
-        f32 pos = middleC / (f32)buffer->sampleRate * (f32)i;
+    for(DWORD i = 0; i < block1SampleCount; i++) {
+        f32 pos = noteSample * buffer->sampleIndex;
+        buffer->sampleIndex++;
         
         // convert to radians
-        f32 remainder = (pos - floor(pos));
-        f32 radians = remainder * 2 * PI;
-        f32 tone = sin(radians);
+        f32 remainder = (pos - floor(pos)); // [0, 1]
+        f32 radians = remainder * 2 * PI;   // [0, 2PI]
+        f32 tone = sin(radians);            // [-1, 1]
 
         // amplitude of the wave == volume
-        byteBlock1[i] = volume * tone;
+        byteBlock1[i] = VOLUME * tone;
     }
     
-    if(buffer->secondary->Unlock(byteBlock1, block1BytesToWrite, byteBlock2, block2BytesToWrite)) {
+    // sound buffer is circular, block 2 describes a wrap around
+    // p = play cursor
+    // w = write cursor
+    // |------p---------w--|
+    // |2-----p---------1--|
+    if(block2SampleCount > 0) {
+        for(DWORD i = 0; i < block2SampleCount; i++) {
+            f32 pos = noteSample * buffer->sampleIndex;
+            buffer->sampleIndex++;
+            
+            // convert to radians
+            f32 remainder = (pos - floor(pos)); // [0, 1]
+            f32 radians = remainder * 2 * PI;   // [0, 2PI]
+            f32 tone = sin(radians);            // [-1, 1]
+
+            // amplitude of the wave == volume
+            byteBlock2[i] = VOLUME * tone;
+        }
+    }
+    
+    buffer->sampleIndex %= buffer->bufferSize;
+    
+    if(buffer->secondary->Unlock(byteBlock1, numBlock1Bytes, byteBlock2, numBlock2Bytes)) {
         printf("Failed to unlock DirectSound secondary buffer\n");
-        return false;
+        return;
     }
-    
-    if(FAILED(buffer->secondary->Play(0, 0, DSBPLAY_LOOPING))) {
-        printf("Failed to play DirectSound secondary buffer\n");
-        return false;
-    }
-    
-    return true;
 }
