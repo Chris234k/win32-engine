@@ -333,7 +333,6 @@ Win32_DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT wi
 void 
 Win32_CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height) {
     BITMAPINFO bitmapInfo = {};
-    memset(&bitmapInfo, 0, sizeof(bitmapInfo)); // TODO necessary?
     bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bitmapInfo.bmiHeader.biWidth = width;
     bitmapInfo.bmiHeader.biHeight = height;
