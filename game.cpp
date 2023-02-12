@@ -11,6 +11,7 @@ GameInit(GameMemory* memory) {
     state->r = 255;
     state->g = 255;
     state->b = 255;
+    
     state->x = 0;
     state->y = 0;
 }
@@ -22,7 +23,7 @@ GameUpdate(GameMemory* memory, GameInput input, SoundBuffer* soundBuffer, f32 dt
     GameState* state = (GameState*)memory;
     
     double growth = 0.1 * dt;
-    double moveSpeed = 0.01 * dt;
+    double moveSpeed = 0.1 * dt;
 
     soundBuffer->note = 261;
 
@@ -69,7 +70,9 @@ GameRender(GameMemory* memory, GraphicsBuffer* graphicsBuffer) {
 void 
 WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b, int32 xPos, int32 yPos) {
     u8* row = buffer->data; // current row
-    int32 rowSize = buffer->width*buffer->bytesPerPixel; // 2D array of pixels, mapped into a 1D array (column x is (width*x) in memory)
+    u32 rowSize = buffer->width*buffer->bytesPerPixel; // 2D array of pixels, mapped into a 1D array (column x is (width*x) in memory)
+    
+    const int PLAYER_SIZE = 10;
     
     for(int32 y = 0; y < buffer->height; y++) {
         u8* pixel = (u8*)row;
@@ -79,7 +82,16 @@ WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b, int32 xPos, int32 y
             int32 drawGreen = 0;
             int32 drawBlue = 0;
             
-            if(x == xPos && y == yPos) {
+            bool xClose = abs(x-xPos) < PLAYER_SIZE;
+            bool yClose = abs(y-yPos) < PLAYER_SIZE;
+            
+            if(xClose && yClose) {
+                // draw player
+                drawRed = r;
+                drawGreen = g;
+                drawBlue = b;
+            } else if ((x == 0) || (y == 0) || (x == (buffer->width-1)) || (y == (buffer->height-1)) ) {
+                // draw outline around the window
                 drawRed = r;
                 drawGreen = g;
                 drawBlue = b;
@@ -106,20 +118,3 @@ WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b, int32 xPos, int32 y
         row += rowSize;
     }
 }
-
-// void WriteSoundToBuffer(SoundBuffer* buffer, float note) {
-//     int volume = 20;
-//     int noteConverted = note / buffer->blockAlign;
-//     // copy in data
-//     for(DWORD i = 0; i < block1BytesToWrite; i++) {
-//         f32 pos = noteConverted / (f32)buffer->sampleRate * (f32)i;
-        
-//         // convert to radians
-//         f32 decimal = (pos - floor(pos)); // TODO don't understand why only using the decimal
-//         f32 radians = decimal * 2 * PI;
-//         f32 tone = sin(radians);
-
-//         // amplitude of the wave == volume
-//         byteBlock1[i] = volume * tone;
-//     }
-// }

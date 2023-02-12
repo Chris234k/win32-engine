@@ -40,7 +40,7 @@ struct Win32GraphicsBuffer {
     int width, height;
     int bytesPerPixel;
     BITMAPINFO bitmapInfo;
-    u8* data;
+    void* data;
 };
 
 struct Win32SoundBuffer {
@@ -58,8 +58,10 @@ struct Win32SoundBuffer {
 
 // forward declarations
 LRESULT CALLBACK Win32_WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam);
+
 void Win32_CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height);
 void Win32_DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT clientRect);
+
 bool Win32_CreateSoundBuffer(Win32SoundBuffer* buffer, HWND windowHandle);
 void Win32_WriteSoundToDevice(DWORD startingByte, DWORD numBytesToWrite, Win32SoundBuffer* buffer, f32 note);
 
@@ -69,8 +71,8 @@ const int BYTES_PER_PIXEL = 4;
 const int SCREEN_WIDTH = 512;
 const int SCREEN_HEIGHT = 512;
 
-const int BUFFER_WIDTH = 16;
-const int BUFFER_HEIGHT = 16;
+const int BUFFER_WIDTH = 512;
+const int BUFFER_HEIGHT = 512;
 
 const float PI = 3.14159265358;
 
@@ -113,9 +115,6 @@ main() {
     }
     ShowWindow(windowHandle, SW_SHOWNORMAL);
     
-    
-    RECT rect;
-    GetClientRect(windowHandle, &rect);
     // engine allocations
     Win32_CreateGraphicsBuffer(&graphicsBuffer, BUFFER_WIDTH, BUFFER_HEIGHT);
     if(!Win32_CreateSoundBuffer(&soundBuffer, windowHandle)) {
@@ -132,14 +131,7 @@ main() {
     GameMemory* gameMemory = (GameMemory*)VirtualAlloc(NULL, gameMemorySize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     gameMemory->size = gameMemorySize;
     
-    GraphicsBuffer gameGraphicsBuffer = {};
     gameInput = {};
-    
-    // pass along revelant data to the game
-    gameGraphicsBuffer.width           = graphicsBuffer.width;
-    gameGraphicsBuffer.height          = graphicsBuffer.height;
-    gameGraphicsBuffer.bytesPerPixel   = graphicsBuffer.bytesPerPixel;
-    gameGraphicsBuffer.data            = (u8*) graphicsBuffer.data; // pointer to the engine's graphics buffer data. Game writes to it, and engine knows how to display it
     
     SoundBuffer gameSoundBuffer = {};
 
@@ -253,7 +245,7 @@ main() {
         u32 byteCount = soundBuffer.latencySampleCount * soundBuffer.bytesPerSample;
         
         // printf("next %u -- play: %u -- startingByte: %u -- byteCount: %u\n", nextCursorPosition, playCursor, startingByte, byteCount);
-        
+        // TODO TODO TODO remove
         // if(startingByte > targetCursorPosition) {
         //     printf("cursor behind\n");
         //     // |--c----b--|
@@ -267,8 +259,18 @@ main() {
         Win32_WriteSoundToDevice(startingByte, byteCount, &soundBuffer, gameSoundBuffer.note);
         
         // [render]
-        // queue WM_PAINT, forces the entire window to redraw
+        // pass along revelant data to the game
+        GraphicsBuffer gameGraphicsBuffer = {};
+        gameGraphicsBuffer.width           = graphicsBuffer.width;
+        gameGraphicsBuffer.height          = graphicsBuffer.height;
+        gameGraphicsBuffer.bytesPerPixel   = graphicsBuffer.bytesPerPixel;
+        gameGraphicsBuffer.data            = (u8*) graphicsBuffer.data; // pointer to the engine's graphics buffer data. Game writes to it, and engine knows how to display it
+        
         GameRender(gameMemory, &gameGraphicsBuffer);
+        
+        // queue WM_PAINT, forces the entire window to redraw
+        RECT rect;
+        GetClientRect(windowHandle, &rect);
         InvalidateRect(windowHandle, &rect, true);
     }
     
@@ -311,14 +313,13 @@ Win32_DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT wi
     int width = (windowRect.right - windowRect.left);
     int height = (windowRect.bottom - windowRect.top);
     
-    // TODO TODO TODO this does not appear to work correctly when resizing the window
     // stretch the graphics buffer pixels onto the window
     StretchDIBits(deviceContext,
-        windowRect.left, windowRect.top,
-        width, height,
+        // destination
+        windowRect.left, windowRect.top, width, height,
         
-        0, 0, 
-        buffer->width, buffer->height,
+        // source
+        0, 0, buffer->width, buffer->height,
         
         buffer->data,
         &buffer->bitmapInfo,
@@ -344,6 +345,7 @@ Win32_CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height) {
     buffer->height = height;
     buffer->bytesPerPixel = BYTES_PER_PIXEL;
     buffer->bitmapInfo = bitmapInfo;
+    
     buffer->data = (u8*) VirtualAlloc(NULL, width*height*BYTES_PER_PIXEL, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); // texture size * 4 bytes per pixel (RGBA)
 }
 

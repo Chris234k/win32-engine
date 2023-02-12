@@ -2,6 +2,7 @@
     "files.associations": {
         "*.dat": "json",
         "*.rh": "cpp",
-        "cmath": "cpp"
+        "cmath": "cpp",
+        "limits": "cpp"
     }
 }
