@@ -47,7 +47,7 @@ struct Win32SoundBuffer {
     u32 sampleIndex;
     u32 latencySampleCount;
     
-    u16 blockAlign;
+    u8 blockAlign;
     u32 samplesPerSecond;
     u8 bytesPerSample;
     
@@ -249,19 +249,22 @@ main() {
         
         // cursor is greater unless circular buffer wraps around
         u32 startingByte = (soundBuffer.sampleIndex*soundBuffer.bytesPerSample) % soundBuffer.bufferSize;
-        u32 targetCursorPosition = (playCursor + soundBuffer.latencySampleCount) % soundBuffer.bufferSize;
-        u32 bytes;
-        if(startingByte == targetCursorPosition) {
-            bytes = soundBuffer.bufferSize;
-        } else if(startingByte > targetCursorPosition) {
-            // |--c----b--|
-            bytes = (soundBuffer.bufferSize - startingByte) + targetCursorPosition;
-        } else {
-            // |--b----c--|
-            bytes = (targetCursorPosition - startingByte);
-        }
+        u32 nextCursorPosition = (playCursor + soundBuffer.latencySampleCount) % soundBuffer.bufferSize;
+        u32 byteCount = soundBuffer.latencySampleCount * soundBuffer.bytesPerSample;
         
-        Win32_WriteSoundToDevice(startingByte, bytes, &soundBuffer, gameSoundBuffer.note);
+        // printf("next %u -- play: %u -- startingByte: %u -- byteCount: %u\n", nextCursorPosition, playCursor, startingByte, byteCount);
+        
+        // if(startingByte > targetCursorPosition) {
+        //     printf("cursor behind\n");
+        //     // |--c----b--|
+        //     byteCount = (soundBuffer.bufferSize - startingByte) + targetCursorPosition;
+        // } else {
+        //     printf("cursor ahead\n");
+        //     // |--b----c--|
+        //     byteCount = (targetCursorPosition - startingByte);
+        // }
+        
+        Win32_WriteSoundToDevice(startingByte, byteCount, &soundBuffer, gameSoundBuffer.note);
         
         // [render]
         // queue WM_PAINT, forces the entire window to redraw
@@ -308,6 +311,7 @@ Win32_DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT wi
     int width = (windowRect.right - windowRect.left);
     int height = (windowRect.bottom - windowRect.top);
     
+    // TODO TODO TODO this does not appear to work correctly when resizing the window
     // stretch the graphics buffer pixels onto the window
     StretchDIBits(deviceContext,
         windowRect.left, windowRect.top,
@@ -404,35 +408,37 @@ Win32_CreateSoundBuffer(Win32SoundBuffer* buffer, HWND windowHandle) {
 }
 
 void
-Win32_WriteSoundToDevice(DWORD startingByte, DWORD numBytesToWrite, Win32SoundBuffer* buffer, f32 note) {
-    assert(numBytesToWrite > 0);
+Win32_WriteSoundToDevice(DWORD startingByte, DWORD byteCount, Win32SoundBuffer* buffer, f32 note) {
+    assert(byteCount > 0);
     
-    u8 *byteBlock1, *byteBlock2;
-    DWORD numBlock1Bytes, numBlock2Bytes;
+    void *block1, *block2;
+    DWORD block1Count, block2Count;
     
-    if(FAILED(buffer->secondary->Lock(startingByte, numBytesToWrite, (void**)&byteBlock1, &numBlock1Bytes, (void**)&byteBlock2, &numBlock2Bytes, 0))) {
+    if(FAILED(buffer->secondary->Lock(startingByte, byteCount, &block1, &block1Count, &block2, &block2Count, 0))) {
         printf("Failed to lock DirectSound secondary buffer.\n");
         return;
     }
     
-    const int VOLUME = 20;
-    f32 noteSample = note / buffer->blockAlign / (f32)buffer->samplesPerSecond;
+    const int VOLUME = 50;
+    
+    // bytes -> number of samples to write
+    DWORD sampleCount = block1Count / buffer->bytesPerSample;
+    u8* samples = (u8*)block1;
 
-    DWORD block1SampleCount = numBlock1Bytes / buffer->bytesPerSample;
-    DWORD block2SampleCount = numBlock2Bytes / buffer->bytesPerSample;
-
-    // copy in data
-    for(DWORD i = 0; i < block1SampleCount; i++) {
-        f32 pos = noteSample * buffer->sampleIndex;
-        buffer->sampleIndex++;
+    // sine wave for the tone
+    f32 period = buffer->samplesPerSecond / note;
+    
+    for(DWORD i = 0; i < sampleCount; i++) {
+        f32 pos = (f32)buffer->sampleIndex / period;    // [0, 1]
+        f32 radians = 2.0f * PI * pos;                  // [0, 2pi]
+        f32 sine = sinf(radians);                       // [-1, 1]
+        int16 sample = sine * VOLUME;                   // [-VOLUME, VOLUME]
         
-        // convert to radians
-        f32 remainder = (pos - floor(pos)); // [0, 1]
-        f32 radians = remainder * 2 * PI;   // [0, 2PI]
-        f32 tone = sin(radians);            // [-1, 1]
-
-        // amplitude of the wave == volume
-        byteBlock1[i] = VOLUME * tone;
+        // left and right channels have the same sample
+        *samples++ = sample;
+        *samples++ = sample;
+        
+        buffer->sampleIndex++;
     }
     
     // sound buffer is circular, block 2 describes a wrap around
@@ -440,24 +446,27 @@ Win32_WriteSoundToDevice(DWORD startingByte, DWORD numBytesToWrite, Win32SoundBu
     // w = write cursor
     // |------p---------w--|
     // |2-----p---------1--|
-    if(block2SampleCount > 0) {
-        for(DWORD i = 0; i < block2SampleCount; i++) {
-            f32 pos = noteSample * buffer->sampleIndex;
-            buffer->sampleIndex++;
+    sampleCount = block2Count / buffer->bytesPerSample;
+    if(sampleCount > 0) {
+        samples = (u8*)block2;
+        
+        for(DWORD i = 0; i < sampleCount; i++) {
+            f32 pos = (f32)buffer->sampleIndex / period;    // [0, 1]
+            f32 radians = 2.0f * PI * pos;                  // [0, 2pi]
+            f32 sine = sinf(radians);                       // [-1, 1]
+            int16 sample = sine * VOLUME;                   // [-VOLUME, VOLUME]
             
-            // convert to radians
-            f32 remainder = (pos - floor(pos)); // [0, 1]
-            f32 radians = remainder * 2 * PI;   // [0, 2PI]
-            f32 tone = sin(radians);            // [-1, 1]
-
-            // amplitude of the wave == volume
-            byteBlock2[i] = VOLUME * tone;
+            // left and right channels have the same sample
+            *samples++ = sample;
+            *samples++ = sample;
+            
+            buffer->sampleIndex++;
         }
     }
     
     buffer->sampleIndex %= buffer->bufferSize;
     
-    if(buffer->secondary->Unlock(byteBlock1, numBlock1Bytes, byteBlock2, numBlock2Bytes)) {
+    if(buffer->secondary->Unlock(block1, block1Count, block2, block2Count)) {
         printf("Failed to unlock DirectSound secondary buffer\n");
         return;
     }

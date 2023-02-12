@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "*.dat": "json",
-        "*.rh": "cpp"
+        "*.rh": "cpp",
+        "cmath": "cpp"
     }
 }
