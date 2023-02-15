@@ -64,6 +64,7 @@ void Win32_DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RE
 
 bool Win32_CreateSoundBuffer(Win32SoundBuffer* buffer, HWND windowHandle);
 void Win32_WriteSoundToDevice(DWORD startingByte, DWORD numBytesToWrite, Win32SoundBuffer* buffer, f32 note);
+void Win32_WriteSoundBlock(DWORD sampleCount, u8* samples, u32 &sampleIndex, f32 period, float volume);
 
 // consts
 const int BYTES_PER_PIXEL = 4;
@@ -77,6 +78,7 @@ const int BUFFER_HEIGHT = 512;
 const float PI = 3.14159265358;
 
 // globals
+float SoundVolume = 50;
 bool IsGameRunning = true;
 Win32GraphicsBuffer graphicsBuffer;
 Win32SoundBuffer soundBuffer;
@@ -244,18 +246,6 @@ main() {
         u32 nextCursorPosition = (playCursor + soundBuffer.latencySampleCount) % soundBuffer.bufferSize;
         u32 byteCount = soundBuffer.latencySampleCount * soundBuffer.bytesPerSample;
         
-        // printf("next %u -- play: %u -- startingByte: %u -- byteCount: %u\n", nextCursorPosition, playCursor, startingByte, byteCount);
-        // TODO TODO TODO remove
-        // if(startingByte > targetCursorPosition) {
-        //     printf("cursor behind\n");
-        //     // |--c----b--|
-        //     byteCount = (soundBuffer.bufferSize - startingByte) + targetCursorPosition;
-        // } else {
-        //     printf("cursor ahead\n");
-        //     // |--b----c--|
-        //     byteCount = (targetCursorPosition - startingByte);
-        // }
-        
         Win32_WriteSoundToDevice(startingByte, byteCount, &soundBuffer, gameSoundBuffer.note);
         
         // [render]
@@ -420,27 +410,14 @@ Win32_WriteSoundToDevice(DWORD startingByte, DWORD byteCount, Win32SoundBuffer* 
         return;
     }
     
-    const int VOLUME = 50;
-    
-    // bytes -> number of samples to write
-    DWORD sampleCount = block1Count / buffer->bytesPerSample;
-    u8* samples = (u8*)block1;
-
     // sine wave for the tone
     f32 period = buffer->samplesPerSecond / note;
     
-    for(DWORD i = 0; i < sampleCount; i++) {
-        f32 pos = (f32)buffer->sampleIndex / period;    // [0, 1]
-        f32 radians = 2.0f * PI * pos;                  // [0, 2pi]
-        f32 sine = sinf(radians);                       // [-1, 1]
-        int16 sample = sine * VOLUME;                   // [-VOLUME, VOLUME]
-        
-        // left and right channels have the same sample
-        *samples++ = sample;
-        *samples++ = sample;
-        
-        buffer->sampleIndex++;
-    }
+    // bytes -> number of samples to write
+    DWORD sampleCount = block1Count / buffer->bytesPerSample;
+    
+    // block 1
+    Win32_WriteSoundBlock(sampleCount, (u8*)block1, buffer->sampleIndex, period, SoundVolume);
     
     // sound buffer is circular, block 2 describes a wrap around
     // p = play cursor
@@ -449,26 +426,30 @@ Win32_WriteSoundToDevice(DWORD startingByte, DWORD byteCount, Win32SoundBuffer* 
     // |2-----p---------1--|
     sampleCount = block2Count / buffer->bytesPerSample;
     if(sampleCount > 0) {
-        samples = (u8*)block2;
-        
-        for(DWORD i = 0; i < sampleCount; i++) {
-            f32 pos = (f32)buffer->sampleIndex / period;    // [0, 1]
-            f32 radians = 2.0f * PI * pos;                  // [0, 2pi]
-            f32 sine = sinf(radians);                       // [-1, 1]
-            int16 sample = sine * VOLUME;                   // [-VOLUME, VOLUME]
-            
-            // left and right channels have the same sample
-            *samples++ = sample;
-            *samples++ = sample;
-            
-            buffer->sampleIndex++;
-        }
+        // block 2
+        Win32_WriteSoundBlock(sampleCount, (u8*)block2, buffer->sampleIndex, period, SoundVolume);
     }
     
     buffer->sampleIndex %= buffer->bufferSize;
-    
+
     if(buffer->secondary->Unlock(block1, block1Count, block2, block2Count)) {
         printf("Failed to unlock DirectSound secondary buffer\n");
         return;
+    }
+}
+
+void
+Win32_WriteSoundBlock(DWORD sampleCount, u8* samples, u32 &sampleIndex, f32 period, float volume) {
+    for(DWORD i = 0; i < sampleCount; i++) {
+        f32 pos = (f32)sampleIndex / period;    // [0, 1]
+        f32 radians = 2.0f * PI * pos;          // [0, 2pi]
+        f32 sine = sinf(radians);               // [-1, 1]
+        int16 sample = sine * volume;           // [-VOLUME, VOLUME]
+        
+        // left and right channels have the same sample
+        *samples++ = sample;
+        *samples++ = sample;
+        
+        sampleIndex++;
     }
 }

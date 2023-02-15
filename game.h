@@ -29,6 +29,8 @@ struct GameInput {
 struct GameState {
     float r, g, b;
     float x, y;
+    
+    float note;
 };
 
 

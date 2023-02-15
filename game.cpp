@@ -14,6 +14,8 @@ GameInit(GameMemory* memory) {
     
     state->x = 0;
     state->y = 0;
+    
+    state->note = 261; // middle c to start
 }
 
 void 
@@ -24,8 +26,6 @@ GameUpdate(GameMemory* memory, GameInput input, SoundBuffer* soundBuffer, f32 dt
     
     double growth = 0.1 * dt;
     double moveSpeed = 0.1 * dt;
-
-    soundBuffer->note = 261;
 
     if(input.Alpha1.isDown) {
         state->r += growth;
@@ -46,11 +46,11 @@ GameUpdate(GameMemory* memory, GameInput input, SoundBuffer* soundBuffer, f32 dt
     if(input.Up.isDown) {
         state->y += moveSpeed;
 
-        soundBuffer->note = 293;
+        state->note += growth;
     } else if(input.Down.isDown) {
         state->y -= moveSpeed;
 
-        soundBuffer->note = 246;
+        state->note -= growth;
     }
     
     if(input.Left.isDown) {
@@ -58,6 +58,8 @@ GameUpdate(GameMemory* memory, GameInput input, SoundBuffer* soundBuffer, f32 dt
     } else if(input.Right.isDown) {
         state->x += moveSpeed;
     }
+    
+    soundBuffer->note = state->note;
 }
 
 void 
