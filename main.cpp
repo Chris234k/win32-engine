@@ -5,8 +5,8 @@
 // os includes
 #include <windows.h>
 #include <wingdi.h>   // graphics
-#include <cguid.h>
 #include <dsound.h>   // sound
+#include "fileapi.h"  //file
 
 
 #include <cstdio>    // printf
@@ -29,6 +29,8 @@ typedef int64_t int64;
 
 typedef float f32; // TODO this is platform dependent? compiler dependent?
 typedef double f64;
+
+#include "main.h"
 
 // game includes
 // must come after typedefs
@@ -452,4 +454,106 @@ Win32_WriteSoundBlock(DWORD sampleCount, u8* samples, u32 &sampleIndex, f32 peri
         
         sampleIndex++;
     }
+}
+
+
+
+// ---------------------------------------------------------------------------------
+// FILE IO
+// https://learn.microsoft.com/en-us/windows/win32/fileio/creating-and-opening-files
+// ---------------------------------------------------------------------------------
+
+FileContent
+FileReadAll(const char path[]) {
+    HANDLE handle = CreateFileA(
+        path,
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+    
+    FileContent content;
+    content.byteCount = 0;
+    
+    if(handle == INVALID_HANDLE_VALUE) {
+        printf("error opening file: %s\n", path);
+        return content;
+    }
+    
+    LARGE_INTEGER fileSize;
+    GetFileSizeEx(handle, &fileSize);
+    
+    content.data = VirtualAlloc(NULL, fileSize.QuadPart, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    
+    DWORD bytesRead;
+    
+    bool success = ReadFile(
+        handle,
+        content.data,
+        fileSize.QuadPart,
+        &bytesRead,
+        NULL
+    );
+
+    content.byteCount = bytesRead;
+    
+    if(!success) {
+        printf("error reading file: %s\n", path);
+        return content;
+    }
+    
+    if(!CloseHandle(handle)) {
+        printf("error closing file handle: %s\n", path);
+        return content;
+    }
+    
+    return content;
+}
+
+
+void
+FileWriteAll(const char path[], void* data, u64 byteCount) {
+    HANDLE handle = CreateFileA(
+        path,
+        GENERIC_WRITE,
+        0,
+        NULL,
+        CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+    
+    if(handle == INVALID_HANDLE_VALUE) {
+        printf("error writing file: %s\n", path);
+        return;
+    }
+    
+    DWORD bytesWritten;
+    
+    bool success = WriteFile(
+        handle, 
+        data,
+        byteCount,
+        &bytesWritten, 
+        NULL
+    );
+    
+    if(!success) {
+        DWORD error = GetLastError();
+        printf("error code %u writing file: %s\n", error, path);
+        return;
+    }
+    
+    if(!CloseHandle(handle)) {
+        printf("error closing file handle: %s\n", path);
+        return;
+    }
+}
+
+void
+FileReleaseMemory(void* data) {
+    VirtualFree(data, 0, MEM_RELEASE);
 }

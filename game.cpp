@@ -16,6 +16,13 @@ GameInit(GameMemory* memory) {
     state->y = 0;
     
     state->note = 261; // middle c to start
+    
+    FileContent content = FileReadAll("c:\\users\\chris\\github\\win32-engine\\input.txt");
+    
+    if(content.data) {
+        FileWriteAll("c:\\users\\chris\\github\\win32-engine\\output.txt", content.data, content.byteCount);
+        FileReleaseMemory(content.data);
+    }
 }
 
 void 
