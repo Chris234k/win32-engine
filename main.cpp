@@ -41,8 +41,9 @@ typedef double f64;
 struct Win32GraphicsBuffer {
     int width, height;
     int bytesPerPixel;
+    int rowSize;
     BITMAPINFO bitmapInfo;
-    void* data;
+    u8* data;
 };
 
 struct Win32SoundBuffer {
@@ -64,6 +65,11 @@ LRESULT CALLBACK Win32_WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, L
 void Win32_CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height);
 void Win32_DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT clientRect);
 
+// debug graphics
+void Win32_DebugDrawVerticalLine(Win32GraphicsBuffer* buffer, int32 xPos, u32 color);
+void Win32_DebugDrawCursorPositions(Win32GraphicsBuffer* buffer);
+
+
 bool Win32_CreateSoundBuffer(Win32SoundBuffer* buffer, HWND windowHandle);
 void Win32_WriteSoundToDevice(DWORD startingByte, DWORD numBytesToWrite, Win32SoundBuffer* buffer, f32 note);
 void Win32_WriteSoundBlock(DWORD sampleCount, u8* samples, u32 &sampleIndex, f32 period, float volume);
@@ -71,8 +77,8 @@ void Win32_WriteSoundBlock(DWORD sampleCount, u8* samples, u32 &sampleIndex, f32
 // consts
 const int BYTES_PER_PIXEL = 4;
 
-const int SCREEN_WIDTH = 512;
-const int SCREEN_HEIGHT = 512;
+const int SCREEN_WIDTH = 1024;
+const int SCREEN_HEIGHT = 1024;
 
 const int BUFFER_WIDTH = 512;
 const int BUFFER_HEIGHT = 512;
@@ -85,6 +91,7 @@ bool IsGameRunning = true;
 Win32GraphicsBuffer graphicsBuffer;
 Win32SoundBuffer soundBuffer;
 GameInput gameInput;
+
 
 int
 main() {
@@ -261,10 +268,13 @@ main() {
         GraphicsBuffer gameGraphicsBuffer = {};
         gameGraphicsBuffer.width           = graphicsBuffer.width;
         gameGraphicsBuffer.height          = graphicsBuffer.height;
+        gameGraphicsBuffer.rowSize         = graphicsBuffer.rowSize;
         gameGraphicsBuffer.bytesPerPixel   = graphicsBuffer.bytesPerPixel;
-        gameGraphicsBuffer.data            = (u8*) graphicsBuffer.data; // pointer to the engine's graphics buffer data. Game writes to it, and engine knows how to display it
+        gameGraphicsBuffer.data            = graphicsBuffer.data; // pointer to the engine's graphics buffer data. Game writes to it, and engine knows how to display it
         
         GameRender(&gameMemory, &gameGraphicsBuffer);
+
+        Win32_DebugDrawCursorPositions(&graphicsBuffer);
         
         // queue WM_PAINT, forces the entire window to redraw
         RECT rect;
@@ -303,6 +313,12 @@ Win32_WindowProc(HWND windowHandle, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return DefWindowProc(windowHandle, uMsg, wParam, lParam);
 }
 
+
+
+// ---------------------------------------------------------------------------------
+// Graphics
+// ---------------------------------------------------------------------------------
+
 void 
 Win32_DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT windowRect) {
     PAINTSTRUCT ps;
@@ -340,11 +356,71 @@ Win32_CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height) {
     
     buffer->width = width;
     buffer->height = height;
+    buffer->rowSize = (width*BYTES_PER_PIXEL); // 2D array of pixels, mapped into a 1D array (column x is (width*x) in memory)
     buffer->bytesPerPixel = BYTES_PER_PIXEL;
     buffer->bitmapInfo = bitmapInfo;
     
     buffer->data = (u8*) VirtualAlloc(NULL, width*height*BYTES_PER_PIXEL, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); // texture size * 4 bytes per pixel (RGBA)
 }
+
+void 
+Win32_DebugDrawVerticalLine(Win32GraphicsBuffer* buffer, int32 xPos, u32 color) {
+    // column c = x * bytes
+    // |**********c*******| += rowSize
+    // |**********c*******| += rowSize
+    // |**********c*******| ... etc
+    u8* column = buffer->data + (buffer->bytesPerPixel * xPos);
+    
+    for(int32 y = 0; y < buffer->height; y++) {
+        u32* pixel = (u32*) column;
+        *pixel = color;
+        
+        column += buffer->rowSize;
+    }
+}
+
+void
+Win32_DebugDrawCursorPositions(Win32GraphicsBuffer* buffer) {
+    // visualize play cursor and write cursor positions
+    const int DEBUG_SOUND_SAMPLE_COUNT = 60;
+    
+    const u32 playColor = 0x00FFFFFF;
+    const u32 writeColor = 0x00FF0000;
+    
+    static int32 playPos[DEBUG_SOUND_SAMPLE_COUNT];
+    static int32 writePos[DEBUG_SOUND_SAMPLE_COUNT];
+    static int32 debugPlayCursorIndex, debugWriteCursorIndex;
+    
+    
+    DWORD playCursor, writeCursor;
+    soundBuffer.secondary->GetCurrentPosition(&playCursor, &writeCursor);
+
+    // play cursor
+    int32 width = soundBuffer.bufferSize;
+    f32 percent = (playCursor/(float)width);
+    int32 xPos = (BUFFER_WIDTH * percent);
+    playPos[debugPlayCursorIndex] = xPos;
+    
+    // write cursor
+    percent = (writeCursor/(float)width);
+    xPos = (BUFFER_WIDTH * percent);
+    writePos[debugWriteCursorIndex] = xPos;
+    
+    debugPlayCursorIndex++;
+    debugWriteCursorIndex++;
+    debugPlayCursorIndex %= DEBUG_SOUND_SAMPLE_COUNT;
+    debugWriteCursorIndex %= DEBUG_SOUND_SAMPLE_COUNT;
+    
+    for(int i = 0; i < DEBUG_SOUND_SAMPLE_COUNT; i++) {
+        Win32_DebugDrawVerticalLine(&graphicsBuffer, playPos[i], playColor);
+        Win32_DebugDrawVerticalLine(&graphicsBuffer, writePos[i], writeColor);
+    }
+}
+
+
+// ---------------------------------------------------------------------------------
+// Sound
+// ---------------------------------------------------------------------------------
 
 bool 
 Win32_CreateSoundBuffer(Win32SoundBuffer* buffer, HWND windowHandle) {

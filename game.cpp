@@ -79,7 +79,6 @@ GameRender(GameMemory* memory, GraphicsBuffer* graphicsBuffer) {
 void 
 WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b, int32 xPos, int32 yPos) {
     u8* row = buffer->data; // current row
-    u32 rowSize = buffer->width*buffer->bytesPerPixel; // 2D array of pixels, mapped into a 1D array (column x is (width*x) in memory)
     
     const int PLAYER_SIZE = 10;
     
@@ -118,12 +117,12 @@ WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b, int32 xPos, int32 y
             *pixel = drawRed;
             pixel++;
             
-            // alpha
+            // TODO empty (alpha?)
             *pixel = 0;
             pixel++;
         }
         
         // move to next row
-        row += rowSize;
+        row += buffer->rowSize;
     }
 }

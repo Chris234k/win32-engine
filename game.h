@@ -11,6 +11,7 @@ struct GameMemory {
 
 struct GraphicsBuffer {
     int32 width, height;
+    int32 rowSize;
     int32 bytesPerPixel;
     u8* data;
 };
