@@ -56,7 +56,7 @@ struct Win32SoundBuffer {
     
     u32 bufferSize;
     LPDIRECTSOUNDBUFFER secondary;
-    f32* data;
+    f32* data; // TODO TODO TODO unused?
 };
 
 // forward declarations
@@ -66,7 +66,7 @@ void Win32_CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int heig
 void Win32_DrawBufferToWindow(Win32GraphicsBuffer* buffer, HWND windowHandle, RECT clientRect);
 
 // debug graphics
-void Win32_DebugDrawVerticalLine(Win32GraphicsBuffer* buffer, int32 xPos, u32 color);
+void Win32_DebugDrawVerticalLine(Win32GraphicsBuffer* buffer, int32 xPos, int32 height, u32 color);
 void Win32_DebugDrawCursorPositions(Win32GraphicsBuffer* buffer);
 
 
@@ -86,7 +86,7 @@ const int BUFFER_HEIGHT = 512;
 const float PI = 3.14159265358;
 
 // globals
-float SoundVolume = 50;
+float SoundVolume = 100;
 bool IsGameRunning = true;
 Win32GraphicsBuffer graphicsBuffer;
 Win32SoundBuffer soundBuffer;
@@ -364,14 +364,14 @@ Win32_CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height) {
 }
 
 void 
-Win32_DebugDrawVerticalLine(Win32GraphicsBuffer* buffer, int32 xPos, u32 color) {
+Win32_DebugDrawVerticalLine(Win32GraphicsBuffer* buffer, int32 xPos, int32 height, u32 color) {
     // column c = x * bytes
     // |**********c*******| += rowSize
     // |**********c*******| += rowSize
     // |**********c*******| ... etc
     u8* column = buffer->data + (buffer->bytesPerPixel * xPos);
     
-    for(int32 y = 0; y < buffer->height; y++) {
+    for(int32 y = 0; y < height; y++) {
         u32* pixel = (u32*) column;
         *pixel = color;
         
@@ -412,8 +412,8 @@ Win32_DebugDrawCursorPositions(Win32GraphicsBuffer* buffer) {
     debugWriteCursorIndex %= DEBUG_SOUND_SAMPLE_COUNT;
     
     for(int i = 0; i < DEBUG_SOUND_SAMPLE_COUNT; i++) {
-        Win32_DebugDrawVerticalLine(&graphicsBuffer, playPos[i], playColor);
-        Win32_DebugDrawVerticalLine(&graphicsBuffer, writePos[i], writeColor);
+        Win32_DebugDrawVerticalLine(&graphicsBuffer, playPos[i], BUFFER_HEIGHT, playColor);
+        Win32_DebugDrawVerticalLine(&graphicsBuffer, writePos[i], BUFFER_HEIGHT, writeColor);
     }
 }
 

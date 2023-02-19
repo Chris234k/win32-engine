@@ -3,6 +3,7 @@
         "*.dat": "json",
         "*.rh": "cpp",
         "cmath": "cpp",
-        "limits": "cpp"
+        "limits": "cpp",
+        "*.tcc": "cpp"
     }
 }
