@@ -131,15 +131,21 @@ main() {
     }
     
     // game allocations
-    int gameMemorySize = 1024 * 1024 * 1; 
-    GameMemory* gameMemory = (GameMemory*)VirtualAlloc(NULL, gameMemorySize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    gameMemory->size = gameMemorySize;
+    int gamePermanentSize = 1024 * 1024 * 1024; // 1 GB
+    int gameTransientSize = 1024 * 1024 * 1;    // 1 MB
+    GameMemory gameMemory;
+    
+    gameMemory.permanent = VirtualAlloc(NULL, gamePermanentSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    gameMemory.transient = VirtualAlloc(NULL, gameTransientSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    
+    gameMemory.permanentSize = gamePermanentSize;
+    gameMemory.transientSize = gameTransientSize;
     
     gameInput = {};
     
     SoundBuffer gameSoundBuffer = {};
 
-    GameInit(gameMemory);
+    GameInit(&gameMemory);
     
     MSG msg = {};
     
@@ -233,7 +239,7 @@ main() {
                 deltaTime = max_dt;
             }
             
-            GameUpdate(gameMemory, gameInput, &gameSoundBuffer, deltaTime);
+            GameUpdate(&gameMemory, gameInput, &gameSoundBuffer, deltaTime);
             
             frameTime -= deltaTime;
             time += deltaTime;
@@ -258,7 +264,7 @@ main() {
         gameGraphicsBuffer.bytesPerPixel   = graphicsBuffer.bytesPerPixel;
         gameGraphicsBuffer.data            = (u8*) graphicsBuffer.data; // pointer to the engine's graphics buffer data. Game writes to it, and engine knows how to display it
         
-        GameRender(gameMemory, &gameGraphicsBuffer);
+        GameRender(&gameMemory, &gameGraphicsBuffer);
         
         // queue WM_PAINT, forces the entire window to redraw
         RECT rect;

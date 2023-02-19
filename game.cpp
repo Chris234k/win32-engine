@@ -4,9 +4,9 @@ void WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b, int xPos, int 
 
 void 
 GameInit(GameMemory* memory) {
-    assert(sizeof(GameState) <= (memory->size));
+    assert(sizeof(GameState) <= (memory->permanentSize));
     
-    GameState* state = (GameState*) memory;
+    GameState* state = (GameState*) memory->permanent;
     
     state->r = 255;
     state->g = 255;
@@ -29,7 +29,7 @@ void
 GameUpdate(GameMemory* memory, GameInput input, SoundBuffer* soundBuffer, f32 dt) {
     // cast memory to state
     // the engine to provides a fixed memory region for the game to operate in
-    GameState* state = (GameState*)memory;
+    GameState* state = (GameState*)memory->permanent;
     
     double growth = 0.1 * dt;
     double moveSpeed = 0.1 * dt;
@@ -71,7 +71,7 @@ GameUpdate(GameMemory* memory, GameInput input, SoundBuffer* soundBuffer, f32 dt
 
 void 
 GameRender(GameMemory* memory, GraphicsBuffer* graphicsBuffer) {
-    GameState* state = (GameState*) memory;
+    GameState* state = (GameState*) memory->permanent;
     // TODO I can see how... knowing the position and desired color of things you'd be able to translate that into screen space
     WriteColorToBuffer(graphicsBuffer, state->r, state->g, state->b, round(state->x), round(state->y));
 }

@@ -2,7 +2,11 @@
 #define GAME_H
 
 struct GameMemory {
-    int64 size;
+    int64 permanentSize;
+    void* permanent;
+    
+    int64 transientSize;
+    void* transient;
 };
 
 struct GraphicsBuffer {
