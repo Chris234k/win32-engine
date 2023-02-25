@@ -3,24 +3,30 @@
     "tasks": [
         {
             "type": "cppbuild",
-            "label": "C/C++: g++.exe build active file",
-            "command": "g++.exe",
+            "label": "C/C++: cl.exe build active file",
+            "command": "cl.exe",
             "args": [
-                "-fdiagnostics-color=always",
-                "-g",
-                "${workspaceFolder}\\main.cpp",
-                "-o",
-                "${fileDirname}\\main.exe",
-                "-lgdi32",
-                "-lDsound"
+                "/Zi",
+                "/FC",
+                "/EHsc",
+                "/nologo",
+                "/Fe${fileDirname}\\main.exe",
+                "main.cpp",
+                "user32.lib",
+                "gdi32.lib",
+                "Dsound.lib"
             ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
             "problemMatcher": [
-                "$gcc"
+                "$msCompile"
             ],
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
+            "detail": "compiler: cl.exe"
         }
     ]
 }
