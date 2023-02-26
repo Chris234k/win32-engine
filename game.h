@@ -18,7 +18,7 @@ struct GraphicsBuffer {
 
 struct SoundBuffer {
     int samplesPerSecond;
-    int numSamplesToWrite;
+    int numSamplesToWrite; // engine requests the number of samples for the game to write
     int16* samples;
 };
 

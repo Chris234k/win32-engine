@@ -253,6 +253,8 @@ main() {
             byteCount = targetByte - startingByte;
         }
         
+        // transfer to game sound
+        // this must occur after getting cursor positions, but before GameUpdate
         SoundBuffer gameSoundBuffer = {};
         gameSoundBuffer.samplesPerSecond = soundBuffer.samplesPerSecond;
         gameSoundBuffer.numSamplesToWrite = byteCount / soundBuffer.bytesPerSample;
