@@ -1,6 +1,7 @@
 #include "game.h"
 
 void WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b, int xPos, int yPos);
+void WriteSound(f32 note, SoundBuffer* soundBuffer);
 
 void 
 GameInit(GameMemory* memory) {
@@ -31,8 +32,8 @@ GameUpdate(GameMemory* memory, GameInput input, SoundBuffer* soundBuffer, f32 dt
     // the engine to provides a fixed memory region for the game to operate in
     GameState* state = (GameState*)memory->permanent;
     
-    double growth = 0.1 * dt;
-    double moveSpeed = 0.1 * dt;
+    double growth = 10 * dt;
+    double moveSpeed = 10 * dt;
 
     if(input.Alpha1.isDown) {
         state->r += growth;
@@ -66,7 +67,7 @@ GameUpdate(GameMemory* memory, GameInput input, SoundBuffer* soundBuffer, f32 dt
         state->x += moveSpeed;
     }
     
-    soundBuffer->note = state->note;
+    WriteSound(state->note, soundBuffer);
 }
 
 void 
@@ -124,5 +125,25 @@ WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b, int32 xPos, int32 y
         
         // move to next row
         row += buffer->rowSize;
+    }
+}
+
+void
+WriteSound(f32 note, SoundBuffer* soundBuffer) {    
+    static f32 sine;
+    const f32 volume = 1000; // 1000 for heaedphones, 3000 for speakers
+    
+    // sine wave for the tone
+    f32 period = soundBuffer->samplesPerSecond / note;
+    
+    int16* output = soundBuffer->samples;
+    for(int i = 0; i < soundBuffer->numSamplesToWrite; i++) {
+        int16 sample = (int16)(sinf(sine) * volume);
+        
+        // left and right channels have the same sample
+        *(output++) = sample;
+        *(output++) = sample;
+        
+        sine += 2.0f * PI * 1.0f / period;
     }
 }

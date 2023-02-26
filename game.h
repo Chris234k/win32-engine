@@ -17,7 +17,9 @@ struct GraphicsBuffer {
 };
 
 struct SoundBuffer {
-    f32 note;
+    int samplesPerSecond;
+    int numSamplesToWrite;
+    int16* samples;
 };
 
 // this is the game level input

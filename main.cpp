@@ -30,6 +30,8 @@ typedef int64_t int64;
 typedef float f32; // TODO this is platform dependent? compiler dependent?
 typedef double f64;
 
+const float PI = 3.14159265358; // TODO is this the right place for this? game needs PI
+
 #include "main.h"
 
 // game includes
@@ -50,13 +52,11 @@ struct Win32SoundBuffer {
     u32 sampleIndex;
     u32 latencySampleCount;
     
-    u8 blockAlign;
     u32 samplesPerSecond;
     u8 bytesPerSample;
     
     u32 bufferSize;
     LPDIRECTSOUNDBUFFER secondary;
-    f32* data; // TODO TODO TODO unused?
 };
 
 // forward declarations
@@ -71,8 +71,8 @@ void Win32_DebugDrawCursorPositions(Win32GraphicsBuffer* buffer);
 
 
 bool Win32_CreateSoundBuffer(Win32SoundBuffer* buffer, HWND windowHandle);
-void Win32_WriteSoundToDevice(DWORD startingByte, DWORD numBytesToWrite, Win32SoundBuffer* buffer, f32 note);
-void Win32_WriteSoundBlock(DWORD sampleCount, u8* samples, u32 &sampleIndex, f32 period, float volume);
+void Win32_WriteSoundToDevice(DWORD startingByte, DWORD byteCount, Win32SoundBuffer* buffer, SoundBuffer* gameSound);
+void Win32_WriteSoundBlock(DWORD sampleCount, int16* destinationSamples, int16* sourceSamples, u32& sampleIndex);
 
 // consts
 const int BYTES_PER_PIXEL = 4;
@@ -83,10 +83,7 @@ const int SCREEN_HEIGHT = 1024;
 const int BUFFER_WIDTH = 512;
 const int BUFFER_HEIGHT = 512;
 
-const float PI = 3.14159265358;
-
 // globals
-float SoundVolume = 100;
 bool IsGameRunning = true;
 Win32GraphicsBuffer graphicsBuffer;
 Win32SoundBuffer soundBuffer;
@@ -128,6 +125,7 @@ main() {
     
     // engine allocations
     Win32_CreateGraphicsBuffer(&graphicsBuffer, BUFFER_WIDTH, BUFFER_HEIGHT);
+    
     if(!Win32_CreateSoundBuffer(&soundBuffer, windowHandle)) {
         return 0;
     }
@@ -148,9 +146,9 @@ main() {
     gameMemory.permanentSize = gamePermanentSize;
     gameMemory.transientSize = gameTransientSize;
     
-    gameInput = {};
+    int16* soundMemory = (int16*)VirtualAlloc(NULL, soundBuffer.bufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     
-    SoundBuffer gameSoundBuffer = {};
+    gameInput = {};
 
     GameInit(&gameMemory);
     
@@ -237,31 +235,54 @@ main() {
             }
         }
         
-        // [update]
-        // https://new.gafferongames.com/post/fix_your_timestep/
-        while(frameTime > 0.0) {
-            float deltaTime = frameTime;
-            
-            if(deltaTime > max_dt) { // maximum step is max_dt
-                deltaTime = max_dt;
-            }
-            
-            GameUpdate(&gameMemory, gameInput, &gameSoundBuffer, deltaTime);
-            
-            frameTime -= deltaTime;
-            time += deltaTime;
+        DWORD playCursor, writeCursor;
+        if(!SUCCEEDED(soundBuffer.secondary->GetCurrentPosition(&playCursor, &writeCursor))) {
+            printf("Failed to get sound cursor position\n");
         }
         
-        
-        DWORD playCursor;
-        soundBuffer.secondary->GetCurrentPosition(&playCursor, 0);
-        
         // cursor is greater unless circular buffer wraps around
-        u32 startingByte = (soundBuffer.sampleIndex*soundBuffer.bytesPerSample) % soundBuffer.bufferSize;
-        u32 nextCursorPosition = (playCursor + soundBuffer.latencySampleCount) % soundBuffer.bufferSize;
-        u32 byteCount = soundBuffer.latencySampleCount * soundBuffer.bytesPerSample;
+        DWORD startingByte = (soundBuffer.sampleIndex*soundBuffer.bytesPerSample) % soundBuffer.bufferSize;
+        DWORD targetByte = (playCursor + (soundBuffer.latencySampleCount*soundBuffer.bytesPerSample)) % soundBuffer.bufferSize;
         
-        Win32_WriteSoundToDevice(startingByte, byteCount, &soundBuffer, gameSoundBuffer.note);
+        DWORD byteCount;
+        
+        if(startingByte > targetByte) { // detect wrap around. sound buffer is circular
+            byteCount = soundBuffer.bufferSize - startingByte;
+            byteCount += targetByte;
+        } else {
+            byteCount = targetByte - startingByte;
+        }
+        
+        SoundBuffer gameSoundBuffer = {};
+        gameSoundBuffer.samplesPerSecond = soundBuffer.samplesPerSecond;
+        gameSoundBuffer.numSamplesToWrite = byteCount / soundBuffer.bytesPerSample;
+        gameSoundBuffer.samples = soundMemory;
+        
+        // TODO commented out to debug sound code
+        // [update]
+        // https://new.gafferongames.com/post/fix_your_timestep/
+        // while(frameTime > 0.0) {
+        //     float deltaTime = frameTime;
+            
+        //     if(deltaTime > max_dt) { // maximum step is max_dt
+        //         deltaTime = max_dt;
+        //     }
+            
+        //     GameUpdate(&gameMemory, gameInput, &gameSoundBuffer, frameTime);
+            
+        //     frameTime -= deltaTime;
+        //     time += deltaTime;
+        // }
+        
+        float deltaTime = frameTime;
+        if(deltaTime > max_dt) { // maximum step is max_dt
+            deltaTime = max_dt;
+        }
+        
+        GameUpdate(&gameMemory, gameInput, &gameSoundBuffer, deltaTime);
+        
+        Win32_WriteSoundToDevice(startingByte, byteCount, &soundBuffer, &gameSoundBuffer);
+        
         
         // [render]
         // pass along revelant data to the game
@@ -283,7 +304,9 @@ main() {
     }
     
     VirtualFree(graphicsBuffer.data, 0, MEM_RELEASE);
-    VirtualFree(soundBuffer.data, 0, MEM_RELEASE);
+    VirtualFree(gameMemory.permanent, 0, MEM_RELEASE);
+    VirtualFree(gameMemory.transient, 0, MEM_RELEASE);
+    VirtualFree(soundMemory, 0 , MEM_RELEASE);
     
     return 0;
 }
@@ -444,20 +467,21 @@ Win32_CreateSoundBuffer(Win32SoundBuffer* buffer, HWND windowHandle) {
     // 48 kHz 16-bit stereo
     u32 samplesPerSecond = 48000;
     u8 channels = 2;
-    u32 bitsPerSample = sizeof(u16) * 8;
-    u32 bytesPerSample = bitsPerSample / 8;
-    
-    const f32 LATENCY_MS = 10.0 / 1000.0;
+    u32 bitsPerSampleMono = sizeof(int16) * 8; // needs to be mono!
     
     // https://learn.microsoft.com/en-us/windows/win32/multimedia/using-the-waveformatex-structure
     WAVEFORMATEX waveFormat = {};
     waveFormat.wFormatTag       = WAVE_FORMAT_PCM;
     waveFormat.nChannels        = channels;
     waveFormat.nSamplesPerSec   = samplesPerSecond;
-    waveFormat.wBitsPerSample   = bitsPerSample;
-    waveFormat.nBlockAlign      = bytesPerSample * channels;
+    waveFormat.wBitsPerSample   = bitsPerSampleMono;
+    waveFormat.nBlockAlign      = bitsPerSampleMono * channels / 8;
     waveFormat.nAvgBytesPerSec  = waveFormat.nSamplesPerSec * waveFormat.nBlockAlign;
     waveFormat.cbSize           = 0;
+    
+    
+    // our actual sample size. 2 channel audio
+    u32 bytesPerSample = sizeof(int16) * channels;
     
     // setup actual buffer
     DSBUFFERDESC soundBufferDesc = {};
@@ -466,42 +490,36 @@ Win32_CreateSoundBuffer(Win32SoundBuffer* buffer, HWND windowHandle) {
     soundBufferDesc.dwReserved = 0;
     soundBufferDesc.lpwfxFormat = &waveFormat;
     
+    
     if(FAILED(directSound->CreateSoundBuffer(&soundBufferDesc, &secondaryBuffer, NULL))) {
         printf("Failed to create DirectSound buffer\n");
         return false;
     }
-    
-    buffer->blockAlign = waveFormat.nBlockAlign;
-    buffer->samplesPerSecond = waveFormat.nSamplesPerSec;
+     
+    buffer->samplesPerSecond = samplesPerSecond;
     buffer->bytesPerSample = bytesPerSample;
-    buffer->latencySampleCount = buffer->samplesPerSecond * LATENCY_MS;
-    buffer->bufferSize = soundBufferDesc.dwBufferBytes;
+    buffer->latencySampleCount = buffer->samplesPerSecond / 20; // TODO const? not exactly sure why 20 works
+    buffer->bufferSize = samplesPerSecond * bytesPerSample;
     buffer->secondary = secondaryBuffer;
-    buffer->data = (f32*)VirtualAlloc(NULL, soundBufferDesc.dwBufferBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     
     return true;
 }
 
 void
-Win32_WriteSoundToDevice(DWORD startingByte, DWORD byteCount, Win32SoundBuffer* buffer, f32 note) {
-    assert(byteCount > 0);
-    
+Win32_WriteSoundToDevice(DWORD startingByte, DWORD byteCount, Win32SoundBuffer* buffer, SoundBuffer* gameSound) {
     void *block1, *block2;
     DWORD block1Count, block2Count;
     
     if(FAILED(buffer->secondary->Lock(startingByte, byteCount, &block1, &block1Count, &block2, &block2Count, 0))) {
-        printf("Failed to lock DirectSound secondary buffer.\n");
+        // printf("Failed to lock DirectSound secondary buffer.\n");
         return;
     }
-    
-    // sine wave for the tone
-    f32 period = buffer->samplesPerSecond / note;
-    
+        
     // bytes -> number of samples to write
     DWORD sampleCount = block1Count / buffer->bytesPerSample;
     
     // block 1
-    Win32_WriteSoundBlock(sampleCount, (u8*)block1, buffer->sampleIndex, period, SoundVolume);
+    Win32_WriteSoundBlock(sampleCount, (int16*)block1, gameSound->samples, buffer->sampleIndex);
     
     // sound buffer is circular, block 2 describes a wrap around
     // p = play cursor
@@ -511,7 +529,7 @@ Win32_WriteSoundToDevice(DWORD startingByte, DWORD byteCount, Win32SoundBuffer* 
     sampleCount = block2Count / buffer->bytesPerSample;
     if(sampleCount > 0) {
         // block 2
-        Win32_WriteSoundBlock(sampleCount, (u8*)block2, buffer->sampleIndex, period, SoundVolume);
+        Win32_WriteSoundBlock(sampleCount, (int16*)block2, gameSound->samples, buffer->sampleIndex);
     }
     
     buffer->sampleIndex %= buffer->bufferSize;
@@ -523,16 +541,11 @@ Win32_WriteSoundToDevice(DWORD startingByte, DWORD byteCount, Win32SoundBuffer* 
 }
 
 void
-Win32_WriteSoundBlock(DWORD sampleCount, u8* samples, u32 &sampleIndex, f32 period, float volume) {
-    for(DWORD i = 0; i < sampleCount; i++) {
-        f32 pos = (f32)sampleIndex / period;    // [0, 1]
-        f32 radians = 2.0f * PI * pos;          // [0, 2pi]
-        f32 sine = sinf(radians);               // [-1, 1]
-        int16 sample = sine * volume;           // [-VOLUME, VOLUME]
-        
+Win32_WriteSoundBlock(DWORD sampleCount, int16* destinationSamples, int16* sourceSamples, u32& sampleIndex) {
+    for(int i = 0; i < sampleCount; i++) {
         // left and right channels have the same sample
-        *samples++ = sample;
-        *samples++ = sample;
+        *destinationSamples++ = *sourceSamples++;
+        *destinationSamples++ = *sourceSamples++;
         
         sampleIndex++;
     }
