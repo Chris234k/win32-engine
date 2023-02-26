@@ -90,6 +90,11 @@ Win32SoundBuffer soundBuffer;
 GameInput gameInput;
 
 
+// TODO monitor refresh rate?
+const float MONITOR_REFRESH_RATE = 60.0f; // TODO does windows have an API for this?
+const float TARGET_FRAMERATE = MONITOR_REFRESH_RATE;
+const float TARGET_FRAME_SECONDS = 1.0f / TARGET_FRAMERATE;
+
 int
 main() {
     const wchar_t CLASS_NAME[] = L"Sample Window Class";
@@ -156,24 +161,23 @@ main() {
     
     // timing
     double time = 0.0;
-    double max_dt = 1.0 / 60.0;
-    LARGE_INTEGER currentTime;
+    double MAX_DT = 1.0 / 60.0;
+    LARGE_INTEGER lastFrameTime;
     LARGE_INTEGER frequency; // ticks per second
     
-    QueryPerformanceCounter(&currentTime);
+    QueryPerformanceCounter(&lastFrameTime);
     QueryPerformanceFrequency(&frequency); // fixed at system boot, need only query once
     
+    // attempt to have scheduler wake us up every 1 ms
+    const u8 TARGET_SCHEDULER_MS = 1;
+    bool allowSleeping = (timeBeginPeriod(TARGET_SCHEDULER_MS) == TIMERR_NOERROR);
+    
     while(IsGameRunning) {
-        LARGE_INTEGER newTime;
-        QueryPerformanceCounter(&newTime);
+        LARGE_INTEGER frameStartTime;
+        QueryPerformanceCounter(&frameStartTime);
         
-        LARGE_INTEGER elapsedMicroseconds;
-        elapsedMicroseconds.QuadPart = newTime.QuadPart - currentTime.QuadPart;
-        elapsedMicroseconds.QuadPart *= 1000000; // avoid loss of precision. convert to microseconds
-        elapsedMicroseconds.QuadPart /= frequency.QuadPart; // elapsed = ticks / ticks per second
-        
-        double frameTime = (double)elapsedMicroseconds.QuadPart / 1000; // convert to milliseconds
-        currentTime = newTime;
+        f32 deltaSeconds = ((f32)frameStartTime.QuadPart - (f32)lastFrameTime.QuadPart) / (f32)frequency.QuadPart;
+        lastFrameTime = frameStartTime;
         
         // [input]
         while(PeekMessage(&msg, windowHandle, 0, 0, PM_REMOVE)) {
@@ -260,31 +264,11 @@ main() {
         gameSoundBuffer.numSamplesToWrite = byteCount / soundBuffer.bytesPerSample;
         gameSoundBuffer.samples = soundMemory;
         
-        // TODO commented out to debug sound code
+        
         // [update]
-        // https://new.gafferongames.com/post/fix_your_timestep/
-        // while(frameTime > 0.0) {
-        //     float deltaTime = frameTime;
-            
-        //     if(deltaTime > max_dt) { // maximum step is max_dt
-        //         deltaTime = max_dt;
-        //     }
-            
-        //     GameUpdate(&gameMemory, gameInput, &gameSoundBuffer, frameTime);
-            
-        //     frameTime -= deltaTime;
-        //     time += deltaTime;
-        // }
-        
-        float deltaTime = frameTime;
-        if(deltaTime > max_dt) { // maximum step is max_dt
-            deltaTime = max_dt;
-        }
-        
-        GameUpdate(&gameMemory, gameInput, &gameSoundBuffer, deltaTime);
+        GameUpdate(&gameMemory, gameInput, &gameSoundBuffer, deltaSeconds);
         
         Win32_WriteSoundToDevice(startingByte, byteCount, &soundBuffer, &gameSoundBuffer);
-        
         
         // [render]
         // pass along revelant data to the game
@@ -296,6 +280,16 @@ main() {
         gameGraphicsBuffer.data            = graphicsBuffer.data; // pointer to the engine's graphics buffer data. Game writes to it, and engine knows how to display it
         
         GameRender(&gameMemory, &gameGraphicsBuffer);
+        
+        // sleep the remainder of the frame
+        if(deltaSeconds < TARGET_FRAME_SECONDS) {
+            if(allowSleeping) {
+                Sleep((TARGET_FRAME_SECONDS - deltaSeconds)*1000.0f);
+            }
+        } else {
+            // TODO probably doesn't make sense to print a log when we're behind... that will make us further behind
+            // printf("frame took %fms -- target is %fms\n", elapsedMS, TARGET_FRAME_SECONDS);
+        }
 
         Win32_DebugDrawCursorPositions(&graphicsBuffer);
         
@@ -309,6 +303,9 @@ main() {
     VirtualFree(gameMemory.permanent, 0, MEM_RELEASE);
     VirtualFree(gameMemory.transient, 0, MEM_RELEASE);
     VirtualFree(soundMemory, 0 , MEM_RELEASE);
+    
+    // ms docs -> timeBeginPeriod should be paired with a timeEndPeriod. not clear if needed at end of program
+    timeEndPeriod(TARGET_SCHEDULER_MS); 
     
     return 0;
 }

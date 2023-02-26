@@ -32,8 +32,8 @@ GameUpdate(GameMemory* memory, GameInput input, SoundBuffer* soundBuffer, f32 dt
     // the engine to provides a fixed memory region for the game to operate in
     GameState* state = (GameState*)memory->permanent;
     
-    double growth = 10 * dt;
-    double moveSpeed = 10 * dt;
+    double growth = 100 * dt;
+    double moveSpeed = 100 * dt;
 
     if(input.Alpha1.isDown) {
         state->r += growth;
@@ -131,7 +131,7 @@ WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b, int32 xPos, int32 y
 void
 WriteSound(f32 note, SoundBuffer* soundBuffer) {    
     static f32 sine;
-    const f32 volume = 1000; // 1000 for heaedphones, 3000 for speakers
+    const f32 volume = 10000;
     
     // sine wave for the tone
     f32 period = soundBuffer->samplesPerSecond / note;

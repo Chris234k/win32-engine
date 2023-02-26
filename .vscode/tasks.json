@@ -14,7 +14,8 @@
                 "main.cpp",
                 "user32.lib",
                 "gdi32.lib",
-                "Dsound.lib"
+                "Dsound.lib",
+                "winmm.lib"
             ],
             "options": {
                 "cwd": "${fileDirname}"
