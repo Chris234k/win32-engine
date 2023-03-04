@@ -1,6 +1,9 @@
 #include "game.h"
 
-void WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b, int xPos, int yPos);
+void DrawColorToBuffer(GraphicsBuffer* buffer, Color32 color);
+void DrawPlayer(GraphicsBuffer* buffer, int32 xPos, int32 yPos, Color32 color);
+void DrawOutline(GraphicsBuffer* buffer, int32 thickness, Color32 color);
+
 void WriteSound(f32 note, SoundBuffer* soundBuffer);
 
 void 
@@ -9,12 +12,12 @@ GameInit(GameMemory* memory) {
     
     GameState* state = (GameState*) memory->permanent;
     
-    state->r = 255;
-    state->g = 255;
-    state->b = 255;
+    state->backgroundColor.packed = 0xFF000000;
+    state->outlineColor.packed = 0xFFFFFFFF;
     
-    state->x = 0;
-    state->y = 0;
+    state->playerColor.packed = 0xFFFFFFFF;
+    state->playerX = 0;
+    state->playerY = 0;
     
     state->note = 261; // middle c to start
     
@@ -32,39 +35,36 @@ GameUpdate(GameMemory* memory, GameInput input, SoundBuffer* soundBuffer, f32 dt
     // the engine to provides a fixed memory region for the game to operate in
     GameState* state = (GameState*)memory->permanent;
     
-    double growth = 100 * dt;
-    double moveSpeed = 100 * dt;
+    f64 growth = 100 * dt;
+    int32 moveSpeed = 1;
 
     if(input.Alpha1.isDown) {
-        state->r += growth;
-        state->r = fmod(state->r, 255);
+        state->playerColor.red += growth;
     }
     
     if(input.Alpha2.isDown) {
-        state->g += growth;
-        state->g = fmod(state->g, 255);
+        state->playerColor.green += growth;
     }
     
     if(input.Alpha3.isDown) {
-        state->b += growth;
-        state->b = fmod(state->b, 255);
+        state->playerColor.blue += growth;
     }
     
     
     if(input.Up.isDown) {
-        state->y += moveSpeed;
-
+        state->playerY += moveSpeed;
+        
         state->note += growth;
     } else if(input.Down.isDown) {
-        state->y -= moveSpeed;
-
+        state->playerY -= moveSpeed;
+        
         state->note -= growth;
     }
     
     if(input.Left.isDown) {
-        state->x -= moveSpeed;
+        state->playerX -= moveSpeed;
     } else if(input.Right.isDown) {
-        state->x += moveSpeed;
+        state->playerX += moveSpeed;
     }
     
     WriteSound(state->note, soundBuffer);
@@ -74,58 +74,65 @@ void
 GameRender(GameMemory* memory, GraphicsBuffer* graphicsBuffer) {
     GameState* state = (GameState*) memory->permanent;
     // TODO I can see how... knowing the position and desired color of things you'd be able to translate that into screen space
-    WriteColorToBuffer(graphicsBuffer, state->r, state->g, state->b, round(state->x), round(state->y));
+    
+    DrawColorToBuffer(graphicsBuffer, state->backgroundColor);
+    DrawPlayer(graphicsBuffer, state->playerX, state->playerY, state->playerColor);
+    
+    // TODO implement
+    DrawOutline(graphicsBuffer, 1, state->outlineColor);
 }
 
 void 
-WriteColorToBuffer(GraphicsBuffer* buffer, u8 r, u8 g, u8 b, int32 xPos, int32 yPos) {
+DrawColorToBuffer(GraphicsBuffer* buffer, Color32 color) {
     u8* row = buffer->data; // current row
     
-    const int PLAYER_SIZE = 10;
-    
     for(int32 y = 0; y < buffer->height; y++) {
-        u8* pixel = (u8*)row;
+        u32* pixel = (u32*)row;
         
         for(int32 x = 0; x < buffer->width; x++) {
-            int32 drawRed = 0;
-            int32 drawGreen = 0;
-            int32 drawBlue = 0;
-            
-            bool xClose = abs(x-xPos) < PLAYER_SIZE;
-            bool yClose = abs(y-yPos) < PLAYER_SIZE;
-            
-            if(xClose && yClose) {
-                // draw player
-                drawRed = r;
-                drawGreen = g;
-                drawBlue = b;
-            } else if ((x == 0) || (y == 0) || (x == (buffer->width-1)) || (y == (buffer->height-1)) ) {
-                // draw outline around the window
-                drawRed = r;
-                drawGreen = g;
-                drawBlue = b;
-            }
-            
-            // blue
-            *pixel = drawBlue;
-            pixel++;
-            
-            // green
-            *pixel = drawGreen;
-            pixel++;
-            
-            // red
-            *pixel = drawRed;
-            pixel++;
-            
-            // TODO empty (alpha?)
-            *pixel = 0;
+            *pixel = color.packed;
             pixel++;
         }
         
         // move to next row
         row += buffer->rowSize;
     }
+}
+
+void
+DrawPlayer(GraphicsBuffer* buffer, int32 xPos, int32 yPos, Color32 color) {
+    const int PLAYER_SIZE = 50;
+    
+    u8* row = buffer->data;
+    
+    // TODO bounds checks!
+    u32 xOffset = (xPos*buffer->bytesPerPixel);
+    u32 yOffset = (yPos*buffer->bytesPerPixel);
+    
+    row += (buffer->rowSize)*yOffset + xOffset;
+    
+    for(int32 y = 0; y < PLAYER_SIZE; y++) {
+        u32* pixel = (u32*)row;
+        
+        for(int32 x = 0; x < PLAYER_SIZE; x++) {
+            *pixel = color.packed;
+            pixel++;
+        }
+        
+        row += buffer->rowSize;
+    }
+}
+
+void
+DrawOutline(GraphicsBuffer* buffer, int32 thickness, Color32 color) {
+    // u8* row = buffer->data;
+    
+    // if ((x == 0) || (y == 0) || (x == (buffer->width-1)) || (y == (buffer->height-1)) ) {
+    //     // draw outline around the window
+    //     drawRed = r;
+    //     drawGreen = g;
+    //     drawBlue = b;
+    // }
 }
 
 void

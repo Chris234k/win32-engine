@@ -290,7 +290,8 @@ main() {
             // TODO probably doesn't make sense to print a log when we're behind... that will make us further behind
             // printf("frame took %fms -- target is %fms\n", elapsedMS, TARGET_FRAME_SECONDS);
         }
-
+        
+        // TODO needs a toggle. ex: f1 to enable
         Win32_DebugDrawCursorPositions(&graphicsBuffer);
         
         // queue WM_PAINT, forces the entire window to redraw

@@ -1,6 +1,20 @@
 #ifndef GAME_H
 #define GAME_H
 
+typedef union {
+    u32 packed; // packed bgra color union
+    
+    struct {
+        u8 blue;
+        u8 green;
+        u8 red;
+        u8 alpha;
+    };
+    
+} Color32;
+
+
+
 struct GameMemory {
     int64 permanentSize;
     void* permanent;
@@ -34,12 +48,14 @@ struct GameInput {
 };
 
 struct GameState {
-    float r, g, b;
-    float x, y;
+    Color32 backgroundColor;
+    Color32 outlineColor;
     
-    float note;
+    Color32 playerColor;
+    int32 playerX, playerY;
+    
+    f32 note;
 };
-
 
 void GameInit(GameMemory* memory);
 void GameUpdate(GameMemory* memory, GameInput input, SoundBuffer* soundBuffer, f32 dt);
