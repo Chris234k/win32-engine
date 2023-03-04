@@ -88,6 +88,7 @@ bool IsGameRunning = true;
 Win32GraphicsBuffer graphicsBuffer;
 Win32SoundBuffer soundBuffer;
 GameInput gameInput;
+bool DebugSound;
 
 
 // TODO monitor refresh rate?
@@ -226,6 +227,12 @@ main() {
                             case VK_RIGHT:
                                 gameInput.Right.isDown = isDown;
                                 break;
+                                
+                            case VK_F1:
+                                if(isDown) { // toggle on down
+                                    DebugSound = !DebugSound;
+                                }
+                                break;
                         }
                     }
                     break;
@@ -291,8 +298,9 @@ main() {
             // printf("frame took %fms -- target is %fms\n", elapsedMS, TARGET_FRAME_SECONDS);
         }
         
-        // TODO needs a toggle. ex: f1 to enable
-        Win32_DebugDrawCursorPositions(&graphicsBuffer);
+        if(DebugSound) {
+            Win32_DebugDrawCursorPositions(&graphicsBuffer);
+        }
         
         // queue WM_PAINT, forces the entire window to redraw
         RECT rect;
