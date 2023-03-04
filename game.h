@@ -25,8 +25,8 @@ struct GameMemory {
 
 struct GraphicsBuffer {
     int32 width, height;
-    int32 rowSize;
     int32 bytesPerPixel;
+    int32 bytesPerRow;
     u8* data;
 };
 
@@ -49,7 +49,6 @@ struct GameInput {
 
 struct GameState {
     Color32 backgroundColor;
-    Color32 outlineColor;
     
     Color32 playerColor;
     int32 playerX, playerY;

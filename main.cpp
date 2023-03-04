@@ -43,7 +43,7 @@ const float PI = 3.14159265358; // TODO is this the right place for this? game n
 struct Win32GraphicsBuffer {
     int width, height;
     int bytesPerPixel;
-    int rowSize;
+    int bytesPerRow;
     BITMAPINFO bitmapInfo;
     u8* data;
 };
@@ -282,8 +282,8 @@ main() {
         GraphicsBuffer gameGraphicsBuffer = {};
         gameGraphicsBuffer.width           = graphicsBuffer.width;
         gameGraphicsBuffer.height          = graphicsBuffer.height;
-        gameGraphicsBuffer.rowSize         = graphicsBuffer.rowSize;
         gameGraphicsBuffer.bytesPerPixel   = graphicsBuffer.bytesPerPixel;
+        gameGraphicsBuffer.bytesPerRow     = graphicsBuffer.bytesPerRow;
         gameGraphicsBuffer.data            = graphicsBuffer.data; // pointer to the engine's graphics buffer data. Game writes to it, and engine knows how to display it
         
         GameRender(&gameMemory, &gameGraphicsBuffer);
@@ -387,7 +387,7 @@ Win32_CreateGraphicsBuffer(Win32GraphicsBuffer* buffer, int width, int height) {
     
     buffer->width = width;
     buffer->height = height;
-    buffer->rowSize = (width*BYTES_PER_PIXEL); // 2D array of pixels, mapped into a 1D array (column x is (width*x) in memory)
+    buffer->bytesPerRow = (width*BYTES_PER_PIXEL); // 2D array of pixels, mapped into a 1D array (column x is (width*x) in memory)
     buffer->bytesPerPixel = BYTES_PER_PIXEL;
     buffer->bitmapInfo = bitmapInfo;
     
@@ -406,7 +406,7 @@ Win32_DebugDrawVerticalLine(Win32GraphicsBuffer* buffer, int32 xPos, int32 heigh
         u32* pixel = (u32*) column;
         *pixel = color;
         
-        column += buffer->rowSize;
+        column += buffer->bytesPerRow;
     }
 }
 

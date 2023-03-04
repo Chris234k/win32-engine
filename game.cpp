@@ -2,7 +2,7 @@
 
 void DrawColorToBuffer(GraphicsBuffer* buffer, Color32 color);
 void DrawPlayer(GraphicsBuffer* buffer, int32 xPos, int32 yPos, Color32 color);
-void DrawOutline(GraphicsBuffer* buffer, int32 thickness, Color32 color);
+void DrawBorder(GraphicsBuffer* buffer, Color32 color);
 
 void WriteSound(f32 note, SoundBuffer* soundBuffer);
 
@@ -13,9 +13,8 @@ GameInit(GameMemory* memory) {
     GameState* state = (GameState*) memory->permanent;
     
     state->backgroundColor.packed = 0xFF000000;
-    state->outlineColor.packed = 0xFFFFFFFF;
     
-    state->playerColor.packed = 0xFFFFFFFF;
+    state->playerColor.packed = 0xFF0000FF;
     state->playerX = 0;
     state->playerY = 0;
     
@@ -77,9 +76,7 @@ GameRender(GameMemory* memory, GraphicsBuffer* graphicsBuffer) {
     
     DrawColorToBuffer(graphicsBuffer, state->backgroundColor);
     DrawPlayer(graphicsBuffer, state->playerX, state->playerY, state->playerColor);
-    
-    // TODO implement
-    DrawOutline(graphicsBuffer, 1, state->outlineColor);
+    DrawBorder(graphicsBuffer, state->playerColor);
 }
 
 void 
@@ -95,7 +92,7 @@ DrawColorToBuffer(GraphicsBuffer* buffer, Color32 color) {
         }
         
         // move to next row
-        row += buffer->rowSize;
+        row += buffer->bytesPerRow;
     }
 }
 
@@ -109,7 +106,7 @@ DrawPlayer(GraphicsBuffer* buffer, int32 xPos, int32 yPos, Color32 color) {
     u32 xOffset = (xPos*buffer->bytesPerPixel);
     u32 yOffset = (yPos*buffer->bytesPerPixel);
     
-    row += (buffer->rowSize)*yOffset + xOffset;
+    row += (buffer->bytesPerRow)*yOffset + xOffset;
     
     for(int32 y = 0; y < PLAYER_SIZE; y++) {
         u32* pixel = (u32*)row;
@@ -119,20 +116,35 @@ DrawPlayer(GraphicsBuffer* buffer, int32 xPos, int32 yPos, Color32 color) {
             pixel++;
         }
         
-        row += buffer->rowSize;
+        row += buffer->bytesPerRow;
     }
 }
 
 void
-DrawOutline(GraphicsBuffer* buffer, int32 thickness, Color32 color) {
-    // u8* row = buffer->data;
+DrawBorder(GraphicsBuffer* buffer, Color32 color) {
+    // vertical
+    u32* left = (u32*)buffer->data;
+    u32* right = (u32*)(buffer->data + (buffer->bytesPerPixel*(buffer->width-1)));
     
-    // if ((x == 0) || (y == 0) || (x == (buffer->width-1)) || (y == (buffer->height-1)) ) {
-    //     // draw outline around the window
-    //     drawRed = r;
-    //     drawGreen = g;
-    //     drawBlue = b;
-    // }
+    for(int32 y = 0; y < buffer->height; y++) {
+        *left = color.packed;
+        *right = color.packed;
+        
+        left += (buffer->bytesPerRow / buffer->bytesPerPixel);
+        right += (buffer->bytesPerRow / buffer->bytesPerPixel);
+    }
+    
+    // horizontal
+    u32* bot = (u32*)buffer->data;
+    u32* top = (u32*)(buffer->data + buffer->bytesPerRow * (buffer->height-1));
+    
+    for(int32 x = 0; x < buffer->width; x++) {
+        *bot = color.packed;
+        *top = color.packed;
+        
+        bot++;
+        top++;
+    }
 }
 
 void
