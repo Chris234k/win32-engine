@@ -6,6 +6,17 @@ void DrawBorder(GraphicsBuffer* buffer, Color32 color);
 
 void WriteSound(f32 note, SoundBuffer* soundBuffer);
 
+
+int32 clamp(int32 current, int32 min, int32 max) {
+    if(current > max) {
+        return max;
+    } else if(current < min) {
+        return min;
+    }
+    
+    return current;
+}
+
 void 
 GameInit(GameMemory* memory) {
     assert(sizeof(GameState) <= (memory->permanentSize));
@@ -100,18 +111,32 @@ void
 DrawPlayer(GraphicsBuffer* buffer, int32 xPos, int32 yPos, Color32 color) {
     const int PLAYER_SIZE = 50;
     
-    u8* row = buffer->data;
+    int32 xMax = xPos+PLAYER_SIZE;
+    int32 yMax = yPos+PLAYER_SIZE;
     
-    // TODO bounds checks!
+    // max pos bounds
+    xMax = clamp(xMax, 0, buffer->width);
+    yMax = clamp(yMax, 0, buffer->height);
+    
+    // min pos bounds
+    xPos = max(0, xPos);
+    yPos = max(0, yPos);
+    
+    
+    // pixels to render
+    int32 xPixels = xMax - xPos;
+    int32 yPixels = yMax - yPos;
+    
     u32 xOffset = (xPos*buffer->bytesPerPixel);
     u32 yOffset = (yPos*buffer->bytesPerPixel);
     
-    row += (buffer->bytesPerRow)*yOffset + xOffset;
+    u8* row = buffer->data;
+    row += (buffer->bytesPerRow*yPos) + xOffset;
     
-    for(int32 y = 0; y < PLAYER_SIZE; y++) {
+    for(int32 y = 0; y < yPixels; y++) {
         u32* pixel = (u32*)row;
         
-        for(int32 x = 0; x < PLAYER_SIZE; x++) {
+        for(int32 x = 0; x < xPixels; x++) {
             *pixel = color.packed;
             pixel++;
         }
