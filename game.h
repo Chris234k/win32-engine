@@ -45,6 +45,8 @@ struct GameKey {
 struct GameInput {
     GameKey Alpha1, Alpha2, Alpha3;
     GameKey Up, Down, Left, Right;
+    
+    int32 mouseX, mouseY;
 };
 
 struct GameState {

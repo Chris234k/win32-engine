@@ -181,6 +181,12 @@ main() {
         lastFrameTime = frameStartTime;
         
         // [input]
+        POINT mousePos;
+        GetCursorPos(&mousePos);
+        ScreenToClient(windowHandle, &mousePos);
+        gameInput.mouseX = mousePos.x;
+        gameInput.mouseY = SCREEN_HEIGHT - mousePos.y; // invert y: this makes it bottom left
+        
         while(PeekMessage(&msg, windowHandle, 0, 0, PM_REMOVE)) {
             WPARAM wParam = msg.wParam;
             switch(msg.message) {

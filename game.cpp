@@ -77,6 +77,18 @@ GameUpdate(GameMemory* memory, GameInput input, SoundBuffer* soundBuffer, f32 dt
         state->playerX += moveSpeed;
     }
     
+    // TODO utility function to request current window dimensions?
+    const f32 BUFFER_SIZE = 512;
+    const f32 SCREEN_SIZE = 1024;
+    const int HALF_PLAYER_SIZE = 25;
+    f32 ratio = BUFFER_SIZE / SCREEN_SIZE;
+
+    state->playerX = input.mouseX * ratio; // mouse is in screen coordinates
+    state->playerY = input.mouseY * ratio;
+    
+    state->playerX -= HALF_PLAYER_SIZE;
+    state->playerY -= HALF_PLAYER_SIZE;
+    
     WriteSound(state->note, soundBuffer);
 }
 
@@ -84,7 +96,7 @@ void
 GameRender(GameMemory* memory, GraphicsBuffer* graphicsBuffer) {
     GameState* state = (GameState*) memory->permanent;
     // TODO I can see how... knowing the position and desired color of things you'd be able to translate that into screen space
-    
+
     DrawColorToBuffer(graphicsBuffer, state->backgroundColor);
     DrawPlayer(graphicsBuffer, state->playerX, state->playerY, state->playerColor);
     DrawBorder(graphicsBuffer, state->playerColor);
