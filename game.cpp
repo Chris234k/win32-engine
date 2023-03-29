@@ -1,11 +1,13 @@
 #include "game.h"
 
-void DrawColorToBuffer(GraphicsBuffer* buffer, Color32 color);
-void DrawPlayer(GraphicsBuffer* buffer, int32 xPos, int32 yPos, Color32 color);
+void ClearBufferWithColor(GraphicsBuffer* buffer, Color32 color);
+void DrawRectangle(GraphicsBuffer* buffer, int32 xPos, int32 yPos, int32 xSize, int32 ySize, Color32 color);
 void DrawBorder(GraphicsBuffer* buffer, Color32 color);
 
 void WriteSound(f32 note, SoundBuffer* soundBuffer);
 
+const int32 PLAYER_SIZE = 50;
+const int32 HALF_PLAYER_SIZE = 25;
 
 int32 clamp(int32 current, int32 min, int32 max) {
     if(current > max) {
@@ -80,7 +82,6 @@ GameUpdate(GameMemory* memory, GameInput input, SoundBuffer* soundBuffer, f32 dt
     // TODO utility function to request current window dimensions?
     const f32 BUFFER_SIZE = 512;
     const f32 SCREEN_SIZE = 1024;
-    const int HALF_PLAYER_SIZE = 25;
     f32 ratio = BUFFER_SIZE / SCREEN_SIZE;
 
     state->playerX = input.mouseX * ratio; // mouse is in screen coordinates
@@ -97,13 +98,13 @@ GameRender(GameMemory* memory, GraphicsBuffer* graphicsBuffer) {
     GameState* state = (GameState*) memory->permanent;
     // TODO I can see how... knowing the position and desired color of things you'd be able to translate that into screen space
 
-    DrawColorToBuffer(graphicsBuffer, state->backgroundColor);
-    DrawPlayer(graphicsBuffer, state->playerX, state->playerY, state->playerColor);
+    ClearBufferWithColor(graphicsBuffer, state->backgroundColor);
+    DrawRectangle(graphicsBuffer, state->playerX, state->playerY, PLAYER_SIZE, PLAYER_SIZE, state->playerColor);
     DrawBorder(graphicsBuffer, state->playerColor);
 }
 
 void 
-DrawColorToBuffer(GraphicsBuffer* buffer, Color32 color) {
+ClearBufferWithColor(GraphicsBuffer* buffer, Color32 color) {
     u8* row = buffer->data; // current row
     
     for(int32 y = 0; y < buffer->height; y++) {
@@ -120,30 +121,30 @@ DrawColorToBuffer(GraphicsBuffer* buffer, Color32 color) {
 }
 
 void
-DrawPlayer(GraphicsBuffer* buffer, int32 xPos, int32 yPos, Color32 color) {
-    const int PLAYER_SIZE = 50;
-    
-    int32 xMax = xPos+PLAYER_SIZE;
-    int32 yMax = yPos+PLAYER_SIZE;
+DrawRectangle(GraphicsBuffer* buffer, int32 xPos, int32 yPos, int32 xSize, int32 ySize, Color32 color) {
+    int32 xMin = xPos;
+    int32 yMin = yPos; 
+    int32 xMax = xPos+xSize;
+    int32 yMax = yPos+ySize;
     
     // max pos bounds
     xMax = clamp(xMax, 0, buffer->width);
     yMax = clamp(yMax, 0, buffer->height);
     
     // min pos bounds
-    xPos = max(0, xPos);
-    yPos = max(0, yPos);
+    xMin = max(0, xMin);
+    yMin = max(0, yMin);
     
     
     // pixels to render
-    int32 xPixels = xMax - xPos;
-    int32 yPixels = yMax - yPos;
+    int32 xPixels = xMax - xMin;
+    int32 yPixels = yMax - yMin;
     
-    u32 xOffset = (xPos*buffer->bytesPerPixel);
-    u32 yOffset = (yPos*buffer->bytesPerPixel);
+    u32 xOffset = (xMin*buffer->bytesPerPixel);
+    u32 yOffset = (yMin*buffer->bytesPerPixel);
     
     u8* row = buffer->data;
-    row += (buffer->bytesPerRow*yPos) + xOffset;
+    row += (buffer->bytesPerRow*yMin) + xOffset;
     
     for(int32 y = 0; y < yPixels; y++) {
         u32* pixel = (u32*)row;
